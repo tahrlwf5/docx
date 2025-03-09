@@ -1,27 +1,16 @@
-# Use official Python image
-FROM python:3.11-slim-bullseye
+FROM python:3.11-slim
 
-# Set working directory
+# تثبيت libgl1 المطلوبة بواسطة OpenCV
+RUN apt-get update && apt-get install -y libgl1
+
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    python3-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements first to leverage Docker cache
+# نسخ ملف المتطلبات وتثبيت المكتبات
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application
+# نسخ باقي ملفات المشروع
 COPY . .
 
-# Expose port (not necessary for polling but required for Railway)
-EXPOSE 80
-
-# Health check
-HEALTHCHECK CMD curl --fail http://localhost:80 || exit 1
-
-# Run the bot
+# تشغيل البوت
 CMD ["python", "bot.py"]
