@@ -1,62 +1,83 @@
 import os
 import logging
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 from pdf2docx import Converter
 
-# إعدادات البوت
-TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+# تفعيل السجلات (Logging)
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text('مرحبا! أرسل لي ملف PDF لتحويله إلى DOCX')
+# دالة استقبال أمر /start
+def start(update: Update, context: CallbackContext):
+    update.message.reply_text("أرسل لي ملف PDF وسأقوم بتحويله إلى DOCX.")
 
-async def convert_pdf_to_docx(pdf_path, docx_path):
-    try:
-        cv = Converter(pdf_path)
-        cv.convert(docx_path)
-        cv.close()
-        return True
-    except Exception as e:
-        print(f"Error converting file: {e}")
-        return False
-
-async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# دالة معالجة ملفات PDF
+def pdf_handler(update: Update, context: CallbackContext):
     document = update.message.document
-    
-    if document.mime_type == 'application/pdf':
-        file = await context.bot.get_file(document.file_id)
-        file_name = document.file_name or 'document.pdf'
-        
-        # تنزيل الملف
-        await update.message.reply_text('جارٍ معالجة الملف...')
-        await file.download_to_drive(file_name)
-        
-        # التحويل
-        docx_file = os.path.splitext(file_name)[0] + '.docx'
-        if await convert_pdf_to_docx(file_name, docx_file):
-            await update.message.reply_document(document=open(docx_file, 'rb'))
-            
-            # تنظيف الملفات المؤقتة
-            os.remove(file_name)
-            os.remove(docx_file)
-        else:
-            await update.message.reply_text('فشل التحويل. يرجى التأكد من أن الملف صالح')
-    else:
-        await update.message.reply_text('الرجاء إرسال ملف PDF فقط')
+    # التأكد من أن الملف هو PDF
+    if document.mime_type != 'application/pdf':
+        update.message.reply_text("الرجاء إرسال ملف PDF صالح.")
+        return
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text('أرسل لي ملف PDF وسأقوم بتحويله إلى مستند Word')
+    file_id = document.file_id
+    new_file = context.bot.getFile(file_id)
+    
+    pdf_path = "input.pdf"
+    docx_path = "output.docx"
+
+    # تنزيل ملف PDF
+    new_file.download(pdf_path)
+    logger.info("تم تنزيل الملف بنجاح.")
+
+    try:
+        # تحويل PDF إلى DOCX باستخدام pdf2docx
+        cv = Converter(pdf_path)
+        cv.convert(docx_path, start=0, end=None)
+        cv.close()
+        logger.info("تم التحويل بنجاح.")
+    except Exception as e:
+        logger.error(f"خطأ أثناء التحويل: {e}")
+        update.message.reply_text("حدث خطأ أثناء تحويل الملف.")
+        if os.path.exists(pdf_path):
+            os.remove(pdf_path)
+        return
+
+    # إرسال ملف DOCX للمستخدم
+    with open(docx_path, 'rb') as docx_file:
+        update.message.reply_document(docx_file, filename="converted.docx")
+    logger.info("تم إرسال الملف المحول للمستخدم.")
+
+    # حذف الملفات المؤقتة
+    os.remove(pdf_path)
+    os.remove(docx_path)
+
+# دالة لمعالجة الأخطاء
+def error_handler(update: Update, context: CallbackContext):
+    logger.error(msg="Exception while handling an update:", exc_info=context.error)
 
 def main():
-    application = Application.builder().token(TOKEN).build()
+    # الحصول على توكن البوت من متغير البيئة (TELEGRAM_BOT_TOKEN)
+    token = os.environ.get("6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8")
+    if not token:
+        logger.error("يرجى تعيين متغير البيئة TELEGRAM_BOT_TOKEN")
+        return
 
-    # handlers
-    application.add_handler(CommandHandler('start', start))
-    application.add_handler(CommandHandler('help', help_command))
-    application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+    updater = Updater(token, use_context=True)
+    dispatcher = updater.dispatcher
 
-    application.run_polling()
+    # إضافة معالجات الأوامر والملفات
+    dispatcher.add_handler(CommandHandler("start", start))
+    dispatcher.add_handler(MessageHandler(Filters.document.pdf, pdf_handler))
+    dispatcher.add_error_handler(error_handler)
+
+    # بدء البوت (Polling)
+    updater.start_polling()
+    logger.info("البوت يعمل الآن...")
+    updater.idle()
 
 if __name__ == '__main__':
     main()
