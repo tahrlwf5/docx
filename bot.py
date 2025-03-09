@@ -61,7 +61,7 @@ def error_handler(update: Update, context: CallbackContext):
 
 def main():
     # الحصول على توكن البوت من متغير البيئة (TELEGRAM_BOT_TOKEN)
-    token = os.environ.get("6334414905:AAGdBEBDfiY7W9Nhyml1wHxSelo8gfpENR8")
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not token:
         logger.error("يرجى تعيين متغير البيئة TELEGRAM_BOT_TOKEN")
         return
