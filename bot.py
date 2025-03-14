@@ -12,7 +12,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # بيانات التوكن الخاص بالبوت
-TELEGRAM_TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN'
+TELEGRAM_TOKEN = '5153049530:AAG4LS17jVZdseUnGkodRpHzZxGLOnzc1gs'
 
 # بيانات حساب pdfcrowd
 PDFCROWD_USERNAME = 'your_username'  # عدلها باسم المستخدم الخاص بك في pdfcrowd
