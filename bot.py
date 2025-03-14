@@ -1,5 +1,6 @@
 import logging
 import os
+import io
 import pdfcrowd
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -39,10 +40,11 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # تحويل PDF إلى HTML باستخدام pdfcrowd API
     try:
         client = pdfcrowd.PdfToHtmlClient(PDFCROWD_USERNAME, PDFCROWD_API_KEY)
-        # استخدام convertFileToStream لتحويل الملف إلى تيار (stream)
-        html_stream = client.convertFileToStream(file_path)
+        # إنشاء تيار بايتات لتخزين الناتج
+        out_stream = io.BytesIO()
+        client.convertFileToStream(file_path, out_stream)
         # قراءة المحتوى من التيار وتحويله إلى نص
-        html_content = html_stream.read().decode("utf-8")
+        html_content = out_stream.getvalue().decode("utf-8")
         # تحديد مسار ملف HTML الناتج
         html_file_path = file_path.replace(".pdf", ".html")
         with open(html_file_path, "w", encoding="utf-8") as f:
