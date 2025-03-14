@@ -1,74 +1,112 @@
 import logging
+import requests
+import base64
+import time
 import os
-import io
-import pdfcrowd
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 
-# إعداد السجل للتتبع
+# إعداد المتغيرات الأساسية
+API_KEY = '3c50e707584d2cbe0139d35033b99d7c'
+CONVERTIO_API = 'https://api.convertio.co/convert'
+TELEGRAM_TOKEN = '5146976580:AAH0ZpK52d6fKJY04v-9mRxb6Z1fTl0xNLw'  # استبدل هذا بالتوكن الخاص ببوتك
+
+# إعداد تسجيل الأحداث (Logging)
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# بيانات التوكن الخاص بالبوت
-TELEGRAM_TOKEN = '5153049530:AAG4LS17jVZdseUnGkodRpHzZxGLOnzc1gs'
+def start(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text('مرحبًا! أرسل لي ملف PDF وسأقوم بتحويله إلى HTML.')
 
-# بيانات حساب pdfcrowd
-PDFCROWD_USERNAME = 'taherja'  # عدلها باسم المستخدم الخاص بك في pdfcrowd
-PDFCROWD_API_KEY = '4f59bd9b2030deabe9d14c92ed65817a'
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("مرحبًا، أرسل لي ملف PDF وسأقوم بتحويله إلى HTML.")
-
-async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def pdf_handler(update: Update, context: CallbackContext) -> None:
     document = update.message.document
-    # التأكد من أن الملف من نوع PDF
     if document.mime_type != 'application/pdf':
-        await update.message.reply_text("يرجى إرسال ملف PDF فقط.")
+        update.message.reply_text('يرجى إرسال ملف بصيغة PDF فقط.')
         return
 
-    file_id = document.file_id
-    new_file = await context.bot.get_file(file_id)
-    
-    # إنشاء مجلد للتنزيل إذا لم يكن موجوداً
-    os.makedirs("downloads", exist_ok=True)
-    file_path = os.path.join("downloads", document.file_name)
-    await new_file.download_to_drive(custom_path=file_path)
-    
-    # تحويل PDF إلى HTML باستخدام pdfcrowd API
+    # تحميل الملف من تليجرام
+    file = document.get_file()
+    input_filename = 'input.pdf'
+    file.download(input_filename)
+    update.message.reply_text('تم استلام الملف، جارٍ التحويل. يرجى الانتظار...')
+
+    # قراءة الملف وترميزه بصيغة Base64
+    with open(input_filename, 'rb') as f:
+        file_data = f.read()
+    encoded_file = base64.b64encode(file_data).decode('utf-8')
+
+    # تجهيز بيانات الطلب لإرسالها إلى API الخاص بـ convertio
+    payload = {
+        "apikey": API_KEY,
+        "input": "base64",
+        "file": encoded_file,
+        "filename": document.file_name,
+        "outputformat": "html"
+    }
+
     try:
-        client = pdfcrowd.PdfToHtmlClient(PDFCROWD_USERNAME, PDFCROWD_API_KEY)
-        # إنشاء تيار بايتات لتخزين الناتج
-        out_stream = io.BytesIO()
-        client.convertFileToStream(file_path, out_stream)
-        # قراءة المحتوى من التيار وتحويله إلى نص
-        html_content = out_stream.getvalue().decode("utf-8")
-        # تحديد مسار ملف HTML الناتج
-        html_file_path = file_path.replace(".pdf", ".html")
-        with open(html_file_path, "w", encoding="utf-8") as f:
-            f.write(html_content)
-    except pdfcrowd.Error as e:
-        await update.message.reply_text(f"حدث خطأ أثناء تحويل الملف: {str(e)}")
+        response = requests.post(CONVERTIO_API, json=payload)
+        response.raise_for_status()
+    except Exception as e:
+        logger.error(f"Error during conversion initiation: {e}")
+        update.message.reply_text('حدث خطأ أثناء بدء عملية التحويل.')
         return
 
-    # إرسال ملف HTML إلى المستخدم
-    with open(html_file_path, "rb") as html_file:
-        await update.message.reply_document(document=html_file, filename=os.path.basename(html_file_path))
-    
-    # حذف الملفات المؤقتة (اختياري)
-    os.remove(file_path)
-    os.remove(html_file_path)
+    result = response.json()
+    if result.get('code') != 200:
+        error_msg = result.get('error', 'خطأ غير معروف.')
+        update.message.reply_text(f'خطأ في API التحويل: {error_msg}')
+        return
 
-def main():
-    application = Application.builder().token(TELEGRAM_TOKEN).build()
+    conversion_id = result['data']['id']
 
-    application.add_handler(CommandHandler("start", start))
-    # التعامل مع الرسائل التي تحتوي على ملف PDF
-    application.add_handler(MessageHandler(filters.Document.PDF, handle_document))
+    # استعلام دوري لمعرفة حالة عملية التحويل
+    status_url = f"{CONVERTIO_API}/{conversion_id}/status"
+    while True:
+        time.sleep(2)  # الانتظار لمدة ثانيتين قبل الاستعلام مرة أخرى
+        status_resp = requests.get(status_url)
+        status_data = status_resp.json()
+        step = status_data.get('data', {}).get('step')
+        if step == 'finish':
+            break
+        if step == 'error':
+            update.message.reply_text('حدث خطأ أثناء التحويل.')
+            return
 
-    application.run_polling()
+    # الحصول على رابط تحميل الملف المحول
+    download_url = status_data['data']['output']['url']
+    try:
+        download_resp = requests.get(download_url)
+        download_resp.raise_for_status()
+    except Exception as e:
+        logger.error(f"Error downloading converted file: {e}")
+        update.message.reply_text('حدث خطأ أثناء تحميل الملف المحول.')
+        return
+
+    output_filename = 'output.html'
+    with open(output_filename, 'wb') as f:
+        f.write(download_resp.content)
+
+    # إرسال الملف المحول إلى المستخدم
+    update.message.reply_document(document=open(output_filename, 'rb'))
+
+    # حذف الملفات المؤقتة
+    os.remove(input_filename)
+    os.remove(output_filename)
+
+def main() -> None:
+    # تأكد من استخدام use_context=True لتفعيل سياق الاستخدام في النسخة 13.15
+    updater = Updater(TELEGRAM_TOKEN, use_context=True)
+    dp = updater.dispatcher
+
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(MessageHandler(Filters.document, pdf_handler))
+
+    updater.start_polling()
+    updater.idle()
 
 if __name__ == '__main__':
     main()
