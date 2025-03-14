@@ -17,7 +17,7 @@ TELEGRAM_TOKEN = '5153049530:AAG4LS17jVZdseUnGkodRpHzZxGLOnzc1gs'
 
 # بيانات حساب pdfcrowd
 PDFCROWD_USERNAME = 'taherja'  # عدلها باسم المستخدم الخاص بك في pdfcrowd
-PDFCROWD_API_KEY = '0419e795ea62ad1d4fcd5dcf7a5b8031'
+PDFCROWD_API_KEY = '4f59bd9b2030deabe9d14c92ed65817a'
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("مرحبًا، أرسل لي ملف PDF وسأقوم بتحويله إلى HTML.")
