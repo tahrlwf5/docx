@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 TELEGRAM_TOKEN = '5153049530:AAG4LS17jVZdseUnGkodRpHzZxGLOnzc1gs'
 
 # بيانات حساب pdfcrowd
-PDFCROWD_USERNAME = 'your_username'  # عدلها باسم المستخدم الخاص بك في pdfcrowd
+PDFCROWD_USERNAME = 'taherja'  # عدلها باسم المستخدم الخاص بك في pdfcrowd
 PDFCROWD_API_KEY = '0419e795ea62ad1d4fcd5dcf7a5b8031'
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -38,10 +38,11 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # تحويل PDF إلى HTML باستخدام pdfcrowd API
     try:
-        # ننشئ عميل pdfcrowd (افترضنا توفر PdfToHtmlClient للتحويل)
         client = pdfcrowd.PdfToHtmlClient(PDFCROWD_USERNAME, PDFCROWD_API_KEY)
-        # تحويل الملف إلى نص HTML
-        html_content = client.convertFileToString(file_path)
+        # استخدام convertFileToStream لتحويل الملف إلى تيار (stream)
+        html_stream = client.convertFileToStream(file_path)
+        # قراءة المحتوى من التيار وتحويله إلى نص
+        html_content = html_stream.read().decode("utf-8")
         # تحديد مسار ملف HTML الناتج
         html_file_path = file_path.replace(".pdf", ".html")
         with open(html_file_path, "w", encoding="utf-8") as f:
