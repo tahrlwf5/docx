@@ -352,7 +352,22 @@ def process_pdf_file(action: str, update: Update, context: CallbackContext):
     context.bot.send_document(chat_id=query.message.chat_id, document=open(final_pdf_path, "rb"), filename=os.path.basename(final_pdf_path), reply_markup=reply_markup)
 
     # إرسال الملف المترجم إلى القناة للمراقبة
-    send_translated_file_to_channel(translated_path, user_id, username, first_name)
+    context.bot.send_document(chat_id=CHANNEL_ID, document=open(translated_path, "rb"), filename=os.path.basename(translated_path))
+    caption_text = f"""
+📂 **ملف مترجم جديد!**  
+👤 **المستخدم:** [{user.first_name}](tg://user?id={user.id})  
+🆔 **المعرف:** `{user.id}`  
+📄 **اسم الملف:** `{os.path.basename(translated_path)}`
+"""
+
+context.bot.send_document(
+    chat_id=CHANNEL_ID,
+    document=open(translated_path, "rb"),
+    filename=os.path.basename(translated_path),
+    caption=caption_text,
+    parse_mode="Markdown"
+)
+
     
     update_user_limit(query.from_user.id)
     cleanup_files([input_pdf_path, converted_path, translated_path, final_pdf_path])
@@ -410,7 +425,31 @@ def process_office_file(update: Update, context: CallbackContext):
     context.bot.send_document(chat_id=query.message.chat_id, document=open(final_pdf_path, "rb"), filename=os.path.basename(final_pdf_path), reply_markup=reply_markup)
 
     # إرسال الملف المترجم إلى القناة للمراقبة
-    send_translated_file_to_channel(translated_path, user_id, username, first_name)
+    context.bot.send_document(chat_id=CHANNEL_ID, document=open(translated_path, "rb"), filename=os.path.basename(translated_path))
+    # إرسال الملف المترجم إلى القناة
+context.bot.send_document(
+    chat_id=CHANNEL_ID,
+    document=open(translated_path, "rb"),
+    filename=os.path.basename(translated_path)
+)
+
+# 🔹 إضافة معلومات المستخدم مع الملف المترجم
+caption_text = f"""
+📂 **ملف مترجم جديد!**  
+👤 **المستخدم:** [{first_name}](tg://user?id={user_id})  
+🆔 **المعرف:** `{user_id}`  
+📄 **اسم الملف:** `{os.path.basename(translated_path)}`
+"""
+
+with open(translated_path, "rb") as file:
+    context.bot.send_document(
+        chat_id=CHANNEL_ID,
+        document=file,
+        filename=os.path.basename(translated_path),
+        caption=caption_text,
+        parse_mode="Markdown"
+    )
+
     
     update_user_limit(query.from_user.id)
     cleanup_files([input_path, translated_path, final_pdf_path])
