@@ -7,3 +7,4 @@ python-bidi
 requests 
 convertapi==1.6.0
 pymongo
+python-dotenv
