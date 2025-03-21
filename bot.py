@@ -367,8 +367,6 @@ context.bot.send_document(
     caption=caption_text,
     parse_mode="Markdown"
 )
-
-    
     update_user_limit(query.from_user.id)
     cleanup_files([input_pdf_path, converted_path, translated_path, final_pdf_path])
 
@@ -448,9 +446,7 @@ with open(translated_path, "rb") as file:
         filename=os.path.basename(translated_path),
         caption=caption_text,
         parse_mode="Markdown"
-    )
-
-    
+    )    
     update_user_limit(query.from_user.id)
     cleanup_files([input_path, translated_path, final_pdf_path])
 
