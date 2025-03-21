@@ -353,20 +353,7 @@ def process_pdf_file(action: str, update: Update, context: CallbackContext):
 
     # إرسال الملف المترجم إلى القناة للمراقبة
     context.bot.send_document(chat_id=CHANNEL_ID, document=open(translated_path, "rb"), filename=os.path.basename(translated_path))
-    caption_text = f"""
-📂 **ملف مترجم جديد!**  
-👤 **المستخدم:** [{user.first_name}](tg://user?id={user.id})  
-🆔 **المعرف:** `{user.id}`  
-📄 **اسم الملف:** `{os.path.basename(translated_path)}`
-"""
 
-context.bot.send_document(
-    chat_id=CHANNEL_ID,
-    document=open(translated_path, "rb"),
-    filename=os.path.basename(translated_path),
-    caption=caption_text,
-    parse_mode="Markdown"
-)
     update_user_limit(query.from_user.id)
     cleanup_files([input_pdf_path, converted_path, translated_path, final_pdf_path])
 
@@ -424,29 +411,7 @@ def process_office_file(update: Update, context: CallbackContext):
 
     # إرسال الملف المترجم إلى القناة للمراقبة
     context.bot.send_document(chat_id=CHANNEL_ID, document=open(translated_path, "rb"), filename=os.path.basename(translated_path))
-    # إرسال الملف المترجم إلى القناة
-context.bot.send_document(
-    chat_id=CHANNEL_ID,
-    document=open(translated_path, "rb"),
-    filename=os.path.basename(translated_path)
-)
-
-# 🔹 إضافة معلومات المستخدم مع الملف المترجم
-caption_text = f"""
-📂 **ملف مترجم جديد!**  
-👤 **المستخدم:** [{first_name}](tg://user?id={user_id})  
-🆔 **المعرف:** `{user_id}`  
-📄 **اسم الملف:** `{os.path.basename(translated_path)}`
-"""
-
-with open(translated_path, "rb") as file:
-    context.bot.send_document(
-        chat_id=CHANNEL_ID,
-        document=file,
-        filename=os.path.basename(translated_path),
-        caption=caption_text,
-        parse_mode="Markdown"
-    )    
+ 
     update_user_limit(query.from_user.id)
     cleanup_files([input_path, translated_path, final_pdf_path])
 
