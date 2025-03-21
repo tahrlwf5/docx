@@ -1,91 +1,92 @@
 import os
-from pymongo import MongoClient
+import pymongo
+import logging
+from datetime import datetime
 from telegram import Bot
 
-# تحميل متغيرات البيئة
-MONGODB_URL = os.environ.get("MONGODB_URL", "mongodb://localhost:27017")
-ADMIN_ID = int(os.environ.get("ADMIN_ID", "0"))      # معرف المشرف
-CHANNEL_ID = os.environ.get("CHANNEL_ID")            # معرف القناة (مثال: @yourchannel)
-BOT_TOKEN = os.environ.get("BOT_TOKEN")              # توكن البوت
+# إعداد تسجيل الأخطاء في ملف bot.log
+logging.basicConfig(
+    filename="bot.log",
+    level=logging.ERROR,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
-# إنشاء الاتصال بقاعدة البيانات
-client = MongoClient(MONGODB_URL)
-db = client["mybotdb"]
+# قراءة متغيرات البيئة
+MONGO_URL = os.getenv("MONGO_URL")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))  # معرف المشرف
+CHANNEL_ID = int(os.getenv("CHANNEL_ID", "0"))  # معرف القناة
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-# مجموعات المستخدمين والإعدادات
-users_collection = db["users"]
-settings_collection = db["settings"]
+# إعداد الاتصال بقاعدة البيانات
+try:
+    client = pymongo.MongoClient(MONGO_URL)
+    db = client["telegram_bot"]
+    users_collection = db["users"]
+except Exception as e:
+    logging.error(f"❌ خطأ في الاتصال بقاعدة البيانات: {str(e)}")
 
-# إنشاء كائن البوت لإرسال الرسائل
+# إعداد البوت لإرسال الإشعارات
 bot = Bot(token=BOT_TOKEN)
 
-def add_user(user_id: int, username: str, first_name: str, last_name: str) -> bool:
-    """
-    إضافة مستخدم جديد إلى قاعدة البيانات.
-    إذا كان المستخدم جديدًا يتم إضافته وإرسال إشعار إلى القناة.
-    """
-    if users_collection.find_one({"user_id": user_id}) is None:
-        user_data = {
-            "user_id": user_id,
-            "username": username,
-            "first_name": first_name,
-            "last_name": last_name
-        }
-        users_collection.insert_one(user_data)
-        # إرسال إشعار للقناة عند دخول مستخدم جديد
-        if CHANNEL_ID:
-            message = (
-                f"🆕 **مستخدم جديد انضم إلى البوت!**\n"
-                f"👤 **الاسم:** {first_name} {last_name if last_name else ''}\n"
-                f"🔹 **المعرف:** @{username if username else 'لا يوجد'}\n"
-                f"🆔 **ID:** `{user_id}`"
-            )
+def notify_admin(error_message):
+    """إرسال خطأ للمشرف عبر التليجرام"""
+    try:
+        bot.send_message(chat_id=ADMIN_ID, text=f"🚨 خطأ في البوت:\n\n{error_message}")
+    except Exception as e:
+        logging.error(f"❌ فشل إرسال إشعار الخطأ للمشرف: {str(e)}")
+
+def add_user(user_id, username, first_name, last_name):
+    """إضافة مستخدم جديد إلى قاعدة البيانات"""
+    try:
+        user = users_collection.find_one({"user_id": user_id})
+        if user is None:
+            new_user = {
+                "user_id": user_id,
+                "username": username,
+                "first_name": first_name,
+                "last_name": last_name,
+                "joined_at": datetime.utcnow(),
+                "file_count": 0  # عداد الملفات
+            }
+            users_collection.insert_one(new_user)
+
+            # إشعار القناة بانضمام مستخدم جديد
+            message = f"🚀 مستخدم جديد انضم إلى البوت!\n\n"
+            message += f"👤 الاسم: {first_name} {last_name}\n"
+            message += f"📌 المعرف: @{username}\n" if username else ""
+            message += f"🆔 ID: `{user_id}`\n"
             bot.send_message(chat_id=CHANNEL_ID, text=message, parse_mode="Markdown")
-        return True
-    return False
+    except Exception as e:
+        logging.error(f"❌ خطأ عند إضافة مستخدم {user_id}: {str(e)}")
+        notify_admin(f"⚠️ حدث خطأ عند إضافة المستخدم `{user_id}`\n\n{str(e)}")
 
-def get_user_count() -> int:
-    """إرجاع عدد المستخدمين المسجلين."""
-    return users_collection.count_documents({})
+def update_file_count(user_id):
+    """تحديث عدد الملفات التي رفعها المستخدم"""
+    try:
+        users_collection.update_one({"user_id": user_id}, {"$inc": {"file_count": 1}})
+    except Exception as e:
+        logging.error(f"❌ خطأ عند تحديث عدد الملفات للمستخدم {user_id}: {str(e)}")
+        notify_admin(f"⚠️ خطأ عند تحديث عدد الملفات للمستخدم `{user_id}`\n\n{str(e)}")
 
-def set_admin_id(admin_id: int):
-    """
-    تعيين معرف المشرف (admin id) في قاعدة البيانات.
-    """
-    settings_collection.update_one({"_id": "admin"}, {"$set": {"admin_id": admin_id}}, upsert=True)
+def send_translated_file(user_id, file_path, caption="ملف مترجم"):
+    """إرسال الملف المترجم إلى القناة للمراقبة"""
+    try:
+        user = users_collection.find_one({"user_id": user_id})
+        if user:
+            message = f"📄 ملف جديد تمت ترجمته بواسطة المستخدم:\n\n"
+            message += f"👤 الاسم: {user.get('first_name', '')} {user.get('last_name', '')}\n"
+            message += f"📌 المعرف: @{user.get('username', 'مجهول')}\n"
+            message += f"🆔 ID: `{user_id}`\n"
+            bot.send_document(chat_id=CHANNEL_ID, document=open(file_path, "rb"), caption=message, parse_mode="Markdown")
+    except Exception as e:
+        logging.error(f"❌ خطأ عند إرسال الملف المترجم للمستخدم {user_id}: {str(e)}")
+        notify_admin(f"⚠️ خطأ عند إرسال الملف المترجم للمستخدم `{user_id}`\n\n{str(e)}")
 
-def get_admin_id() -> int:
-    """
-    إرجاع معرف المشرف.
-    """
-    doc = settings_collection.find_one({"_id": "admin"})
-    return doc["admin_id"] if doc and "admin_id" in doc else None
-
-def set_channel_id(channel_id: str):
-    """
-    تعيين معرف القناة في قاعدة البيانات.
-    """
-    settings_collection.update_one({"_id": "channel"}, {"$set": {"channel_id": channel_id}}, upsert=True)
-
-def get_channel_id() -> str:
-    """
-    إرجاع معرف القناة المخزن.
-    """
-    doc = settings_collection.find_one({"_id": "channel"})
-    return doc["channel_id"] if doc and "channel_id" in doc else None
-
-def send_translated_file_to_channel(user_id: int, first_name: str, username: str, file_path: str, original_file_name: str):
-    """
-    إرسال الملف المترجم إلى القناة مع معلومات المستخدم للمراقبة.
-    """
-    channel_id = get_channel_id()
-    if channel_id:
-        message = (
-            f"📢 **تمت ترجمة ملف جديد!**\n"
-            f"👤 **المستخدم:** [{first_name}](tg://user?id={user_id})\n"
-            f"🔹 **المعرف:** @{username if username else 'لا يوجد'}\n"
-            f"🆔 **ID:** `{user_id}`\n"
-            f"📄 **اسم الملف:** `{original_file_name}`"
-        )
-        with open(file_path, "rb") as file:
-            bot.send_document(chat_id=channel_id, document=file, caption=message, parse_mode="Markdown")
+def get_user_count():
+    """إرجاع عدد المستخدمين"""
+    try:
+        return users_collection.count_documents({})
+    except Exception as e:
+        logging.error(f"❌ خطأ عند حساب عدد المستخدمين: {str(e)}")
+        notify_admin(f"⚠️ خطأ عند حساب عدد المستخدمين\n\n{str(e)}")
+        return 0
