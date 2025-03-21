@@ -26,7 +26,8 @@ from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, Callb
 import convertapi
 
 # استيراد وظائف قاعدة البيانات
-from database import add_user, get_user_count, send_translated_file_to_channel, get_channel_id
+from database import add_user, get_user_count, send_translated_file  
+from database import CHANNEL_ID
 
 # تحميل متغيرات البيئة المطلوبة
 TOKEN = os.environ.get("BOT_TOKEN")
