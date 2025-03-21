@@ -351,7 +351,7 @@ def process_pdf_file(action: str, update: Update, context: CallbackContext):
     context.bot.send_document(chat_id=query.message.chat_id, document=open(final_pdf_path, "rb"), filename=os.path.basename(final_pdf_path), reply_markup=reply_markup)
 
     # إرسال الملف المترجم إلى القناة للمراقبة
-    context.bot.send_document(chat_id=get_channel_id() or "", document=open(translated_path, "rb"), filename=os.path.basename(translated_path))
+    context.bot.send_document(chat_id=CHANNEL_ID, document=open(translated_path, "rb"), filename=os.path.basename(translated_path))
     
     update_user_limit(query.from_user.id)
     cleanup_files([input_pdf_path, converted_path, translated_path, final_pdf_path])
@@ -409,7 +409,7 @@ def process_office_file(update: Update, context: CallbackContext):
     context.bot.send_document(chat_id=query.message.chat_id, document=open(final_pdf_path, "rb"), filename=os.path.basename(final_pdf_path), reply_markup=reply_markup)
 
     # إرسال الملف المترجم إلى القناة للمراقبة
-    context.bot.send_document(chat_id=get_channel_id() or "", document=open(translated_path, "rb"), filename=os.path.basename(translated_path))
+    context.bot.send_document(chat_id=CHANNEL_ID, document=open(translated_path, "rb"), filename=os.path.basename(translated_path))
     
     update_user_limit(query.from_user.id)
     cleanup_files([input_path, translated_path, final_pdf_path])
