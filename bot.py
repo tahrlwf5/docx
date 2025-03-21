@@ -27,6 +27,7 @@ import convertapi
 
 # استيراد وظائف قاعدة البيانات
 from database import add_user, get_user_count, send_translated_file_to_channel
+from database import send_translated_file_to_channel
 from database import CHANNEL_ID
 
 # تحميل متغيرات البيئة المطلوبة
