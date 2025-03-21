@@ -4,3 +4,5 @@ python-pptx
 googletrans==4.0.0rc1
 arabic_reshaper
 python-bidi
+requests 
+convertapi==1.6.0
