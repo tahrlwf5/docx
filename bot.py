@@ -17,7 +17,7 @@ TOKEN = '5284087690:AAGwKfPojQ3c-SjCHSIdeog-yN3-4Gpim1Y'
 # تهيئة مترجم جوجل
 translator = Translator()
 
-# استخدام إعادة التشكيل أو لا (اختبر القيمتين لمعرفة الأفضل لجهازك)
+# خيار إعادة تشكيل النصوص العربية
 apply_arabic_processing = False
 
 # تحديد الخط العربي الافتراضي
@@ -50,16 +50,28 @@ def set_paragraph_font(paragraph):
 
 def translate_docx(file_bytes: bytes) -> io.BytesIO:
     """
-    ترجمة ملف DOCX مع الحفاظ على الخطوط والتنسيقات.
+    ترجمة محتوى DOCX بما في ذلك الجداول والمربعات النصية.
     """
     document = Document(io.BytesIO(file_bytes))
     
+    # ترجمة الفقرات العادية
     for paragraph in document.paragraphs:
         if paragraph.text.strip():
             translated_text = translator.translate(paragraph.text, src='en', dest='ar').text
             translated_text = process_arabic(translated_text)
             paragraph.text = translated_text
-            set_paragraph_font(paragraph)  # تعيين الخط
+            set_paragraph_font(paragraph)
+
+    # ترجمة الجداول
+    for table in document.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                if cell.text.strip():
+                    translated_text = translator.translate(cell.text, src='en', dest='ar').text
+                    translated_text = process_arabic(translated_text)
+                    cell.text = translated_text
+                    if cell.paragraphs:
+                        set_paragraph_font(cell.paragraphs[0])
 
     output = io.BytesIO()
     document.save(output)
@@ -68,12 +80,13 @@ def translate_docx(file_bytes: bytes) -> io.BytesIO:
 
 def translate_pptx(file_bytes: bytes) -> io.BytesIO:
     """
-    ترجمة ملف PPTX مع ضبط الخطوط العربية.
+    ترجمة محتوى PPTX بما في ذلك المربعات النصية والجداول.
     """
     prs = Presentation(io.BytesIO(file_bytes))
     
     for slide in prs.slides:
         for shape in slide.shapes:
+            # ترجمة المربعات النصية
             if hasattr(shape, "text") and shape.text.strip():
                 translated_text = translator.translate(shape.text, src='en', dest='ar').text
                 translated_text = process_arabic(translated_text)
@@ -81,8 +94,23 @@ def translate_pptx(file_bytes: bytes) -> io.BytesIO:
                     shape.text = translated_text
                     for paragraph in shape.text_frame.paragraphs:
                         for run in paragraph.runs:
-                            run.font.name = ARABIC_FONT  # تعيين الخط العربي
+                            run.font.name = ARABIC_FONT  # تعيين الخط
                             run.font.size = Pt(24)
+
+            # ترجمة الجداول
+            if shape.has_table:
+                table = shape.table
+                for row in table.rows:
+                    for cell in row.cells:
+                        if cell.text.strip():
+                            translated_text = translator.translate(cell.text, src='en', dest='ar').text
+                            translated_text = process_arabic(translated_text)
+                            cell.text = translated_text
+                            if cell.text_frame:
+                                for paragraph in cell.text_frame.paragraphs:
+                                    for run in paragraph.runs:
+                                        run.font.name = ARABIC_FONT
+                                        run.font.size = Pt(18)
 
     output = io.BytesIO()
     prs.save(output)
