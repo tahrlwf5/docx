@@ -1,12 +1,13 @@
 import io
 from docx import Document
+from docx.shared import Pt
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from pptx import Presentation
+from pptx.util import Pt
 from googletrans import Translator
 import arabic_reshaper
 from bidi.algorithm import get_display
-from docx.oxml.ns import qn
-from docx.oxml import OxmlElement
-
 from telegram import Update
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 
@@ -16,35 +17,50 @@ TOKEN = '5284087690:AAGwKfPojQ3c-SjCHSIdeog-yN3-4Gpim1Y'
 # تهيئة مترجم جوجل
 translator = Translator()
 
+# استخدام إعادة التشكيل أو لا (اختبر القيمتين لمعرفة الأفضل لجهازك)
+apply_arabic_processing = False
+
+# تحديد الخط العربي الافتراضي
+ARABIC_FONT = "Traditional Arabic"
+
 def process_arabic(text: str) -> str:
     """
-    إعادة تشكيل الحروف العربية وترتيبها من اليمين لليسار.
+    إعادة تشكيل النص العربي إذا لزم الأمر.
     """
-    reshaped_text = arabic_reshaper.reshape(text)
-    bidi_text = get_display(reshaped_text)
-    return bidi_text
+    if apply_arabic_processing:
+        reshaped_text = arabic_reshaper.reshape(text)
+        bidi_text = get_display(reshaped_text)
+        return bidi_text
+    else:
+        return text
+
+def set_paragraph_font(paragraph):
+    """
+    تعيين الخط الافتراضي والاتجاه للنص داخل مستند Word.
+    """
+    run = paragraph.runs[0] if paragraph.runs else paragraph.add_run()
+    run.font.name = ARABIC_FONT
+    run.font.size = Pt(14)
+
+    # ضبط اتجاه الكتابة من اليمين لليسار
+    pPr = paragraph._p.get_or_add_pPr()
+    bidi = OxmlElement('w:bidi')
+    bidi.set(qn('w:val'), "1")
+    pPr.append(bidi)
 
 def translate_docx(file_bytes: bytes) -> io.BytesIO:
     """
-    ترجمة ملف DOCX من الإنجليزية إلى العربية مع الحفاظ على التنسيق.
+    ترجمة ملف DOCX مع الحفاظ على الخطوط والتنسيقات.
     """
     document = Document(io.BytesIO(file_bytes))
     
     for paragraph in document.paragraphs:
-        original_text = paragraph.text
-        if original_text.strip():
-            # ترجمة النص
-            translated = translator.translate(original_text, src='en', dest='ar').text
-            # معالجة النص العربي
-            translated = process_arabic(translated)
-            paragraph.text = translated
-            
-            # ضبط اتجاه النص إلى RTL
-            pPr = paragraph._p.get_or_add_pPr()
-            bidi = OxmlElement('w:bidi')
-            bidi.set(qn('w:val'), "1")
-            pPr.append(bidi)
-    
+        if paragraph.text.strip():
+            translated_text = translator.translate(paragraph.text, src='en', dest='ar').text
+            translated_text = process_arabic(translated_text)
+            paragraph.text = translated_text
+            set_paragraph_font(paragraph)  # تعيين الخط
+
     output = io.BytesIO()
     document.save(output)
     output.seek(0)
@@ -52,21 +68,22 @@ def translate_docx(file_bytes: bytes) -> io.BytesIO:
 
 def translate_pptx(file_bytes: bytes) -> io.BytesIO:
     """
-    ترجمة ملف PPTX من الإنجليزية إلى العربية مع الحفاظ على التنسيق.
+    ترجمة ملف PPTX مع ضبط الخطوط العربية.
     """
     prs = Presentation(io.BytesIO(file_bytes))
     
     for slide in prs.slides:
         for shape in slide.shapes:
             if hasattr(shape, "text") and shape.text.strip():
-                original_text = shape.text
-                translated = translator.translate(original_text, src='en', dest='ar').text
-                translated = process_arabic(translated)
-                # تعيين النص المترجم في مربع النص
+                translated_text = translator.translate(shape.text, src='en', dest='ar').text
+                translated_text = process_arabic(translated_text)
                 if shape.has_text_frame:
-                    shape.text = translated
-                    # لضمان عرض RTL، يمكن تعديل بعض خصائص text_frame إذا دعت الحاجة.
-    
+                    shape.text = translated_text
+                    for paragraph in shape.text_frame.paragraphs:
+                        for run in paragraph.runs:
+                            run.font.name = ARABIC_FONT  # تعيين الخط العربي
+                            run.font.size = Pt(24)
+
     output = io.BytesIO()
     prs.save(output)
     output.seek(0)
@@ -79,7 +96,6 @@ def handle_file(update: Update, context: CallbackContext) -> None:
     document_file = update.message.document
     file_name = document_file.file_name.lower()
     
-    # تحميل الملف كـ bytes
     file = document_file.get_file()
     file_bytes = file.download_as_bytearray()
 
