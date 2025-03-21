@@ -1,9 +1,7 @@
-import os
-import io
-import time
+import io, os, time, json
 from datetime import datetime, timedelta
 
-# مكتبات تحويل الملفات والوثائق
+# مكتبات تحويل المستندات
 from docx import Document
 from docx.shared import Pt
 from docx.oxml import OxmlElement
@@ -19,21 +17,20 @@ import arabic_reshaper
 from bidi.algorithm import get_display
 
 # مكتبات التليجرام
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, Message, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, CallbackQueryHandler
 
-# مكتبة ConvertAPI لتحويل الملفات
+# مكتبة ConvertAPI
 import convertapi
 
-# استيراد وظائف قاعدة البيانات
-from database import add_user, get_user_count, send_translated_file_to_channel
-from database import send_translated_file_to_channel
-from database import CHANNEL_ID
-
-# تحميل متغيرات البيئة المطلوبة
-TOKEN = os.environ.get("BOT_TOKEN")
-CONVERT_API_KEY = os.environ.get("CONVERT_API_KEY")
+# إعدادات التوكن ومفتاح ConvertAPI
+TOKEN = '7978691040:AAEbmmnlIaz9lIrS6gBrvIvA14Kju-MrUXs'
+CONVERT_API_KEY = "secret_ZJOY2tBFX1c3T3hA"
 convertapi.api_secret = CONVERT_API_KEY
+
+# إعدادات الملف والآيدي الخاص بالمطور
+USER_FILE = "user_data.json"
+ADMIN_CHAT_ID = 5198110160
 
 # مجلد التخزين المؤقت
 TEMP_FOLDER = "temp_files"
@@ -52,17 +49,52 @@ MAX_PAGES = 10                        # 10 صفحات (أو 10 شرائح في P
 WAIT_TIME = timedelta(minutes=12)     # فترة انتظار 12 دقيقة لكل مستخدم
 DAILY_LIMIT = 10                      # 10 ملفات يومياً لكل مستخدم
 
-# إدارة حدود الاستخدام (مؤقتة في الذاكرة)
-user_last_translation = {}  # {user_id: datetime}
+# متغيرات تتبع الاستخدام
+user_last_translation = {}  # {user_id: datetime_of_last_translation}
 user_daily_limits = {}      # {user_id: (date_str, count)}
 
-# دوال معالجة الوثائق والترجمة
+# ===================== إدارة بيانات المستخدمين =====================
+def load_user_data():
+    if os.path.exists(USER_FILE):
+        with open(USER_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    else:
+        return {}
 
+def save_user_data(data):
+    with open(USER_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+
+def record_new_user(user, context: CallbackContext):
+    user_data = load_user_data()
+    user_id_str = str(user.id)
+    if user_id_str not in user_data:
+        # إضافة بيانات المستخدم
+        user_data[user_id_str] = {
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "username": user.username,
+            "user_id": user.id,
+            "joined": datetime.now().isoformat()
+        }
+        save_user_data(user_data)
+        # إرسال رسالة للمطور
+        message = f"دخل مستخدم جديد:\nالاسم: {user.first_name} {user.last_name if user.last_name else ''}\nالمعرف: {user.username if user.username else 'غير متوفر'}\nالايدي: {user.id}"
+        context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=message)
+
+# ===================== دوال تحويل ConvertAPI =====================
+def convert_file(input_path: str, output_format: str, output_path: str):
+    result = convertapi.convert(output_format, {'File': input_path})
+    result.save_files(output_path)
+
+# ===================== دوال معالجة وترجمة DOCX/PPTX =====================
 def process_arabic(text: str) -> str:
     if apply_arabic_processing:
-        reshaped = arabic_reshaper.reshape(text)
-        return get_display(reshaped)
-    return text
+        reshaped_text = arabic_reshaper.reshape(text)
+        bidi_text = get_display(reshaped_text)
+        return bidi_text
+    else:
+        return text
 
 def set_paragraph_rtl(paragraph):
     pPr = paragraph._p.get_or_add_pPr()
@@ -73,8 +105,9 @@ def set_paragraph_rtl(paragraph):
 def translate_paragraph(paragraph):
     for run in paragraph.runs:
         if run.text.strip():
-            translated = translator.translate(run.text, src='en', dest='ar').text
-            run.text = process_arabic(translated)
+            translated_text = translator.translate(run.text, src='en', dest='ar').text
+            translated_text = process_arabic(translated_text)
+            run.text = translated_text
             run.font.name = ARABIC_FONT
             run.font.size = Pt(14)
     set_paragraph_rtl(paragraph)
@@ -97,16 +130,16 @@ def get_all_docx_paragraphs(document: Document) -> list:
     return paras
 
 def get_all_pptx_shapes(prs: Presentation) -> list:
-    shapes = []
+    shapes_list = []
     for slide in prs.slides:
         for shape in slide.shapes:
             if shape.has_text_frame or getattr(shape, "has_table", False):
-                shapes.append(shape)
-    return shapes
+                shapes_list.append(shape)
+    return shapes_list
 
 def add_header_docx(document: Document):
-    header = "تم ترجمة بواسطة البوت : @i2pdf2tbot\n\n"
-    para = document.add_paragraph(header)
+    header_text = "تم ترجمة بواسطة البوت : @i2pdf2tbot\n\n"
+    para = document.add_paragraph(header_text)
     para.runs[0].font.name = ARABIC_FONT
     para.runs[0].font.size = Pt(14)
     set_paragraph_rtl(para)
@@ -115,27 +148,28 @@ def add_header_docx(document: Document):
 def add_header_pptx(prs: Presentation):
     slide_layout = prs.slide_layouts[5]
     header_slide = prs.slides.add_slide(slide_layout)
-    txBox = header_slide.shapes.add_textbox(0, 0, prs.slide_width, pptxPt(50))
+    txBox = header_slide.shapes.add_textbox(left=0, top=0, width=prs.slide_width, height=pptxPt(50))
     tf = txBox.text_frame
     tf.text = "تم ترجمة بواسطة البوت : @i2pdf2tbot"
-    for para in tf.paragraphs:
-        for run in para.runs:
+    for paragraph in tf.paragraphs:
+        for run in paragraph.runs:
             run.font.name = ARABIC_FONT
             run.font.size = pptxPt(20)
-    xml_slides = prs.slides._sldIdLst
+    xml_slides = prs.slides._sldIdLst  
     slides = list(xml_slides)
     xml_slides.remove(slides[-1])
     xml_slides.insert(0, slides[-1])
 
 def translate_docx_with_progress(file_bytes: bytes, progress_callback) -> io.BytesIO:
     document = Document(io.BytesIO(file_bytes))
-    if count_docx_pages(document) > MAX_PAGES:
-        raise Exception(f"عدد الصفحات يتجاوز الحد المسموح ({MAX_PAGES}).")
-    paras = get_all_docx_paragraphs(document)
-    total = len(paras) if paras else 1
-    for idx, para in enumerate(paras):
-        if para.text.strip():
-            translate_paragraph(para)
+    pages = count_docx_pages(document)
+    if pages > MAX_PAGES:
+        raise Exception(f"عدد صفحات الملف ({pages}) يتجاوز الحد المسموح ({MAX_PAGES}).")
+    all_paras = get_all_docx_paragraphs(document)
+    total = len(all_paras) if all_paras else 1
+    for idx, paragraph in enumerate(all_paras):
+        if paragraph.text.strip():
+            translate_paragraph(paragraph)
         progress_callback(int((idx+1) / total * 100))
     add_header_docx(document)
     output = io.BytesIO()
@@ -146,15 +180,16 @@ def translate_docx_with_progress(file_bytes: bytes, progress_callback) -> io.Byt
 def translate_pptx_with_progress(file_bytes: bytes, progress_callback) -> io.BytesIO:
     prs = Presentation(io.BytesIO(file_bytes))
     if len(prs.slides) > MAX_PAGES:
-        raise Exception(f"عدد الشرائح يتجاوز الحد المسموح ({MAX_PAGES}).")
-    shapes = get_all_pptx_shapes(prs)
-    total = len(shapes) if shapes else 1
-    for idx, shape in enumerate(shapes):
+        raise Exception(f"عدد الشرائح ({len(prs.slides)}) يتجاوز الحد المسموح ({MAX_PAGES}).")
+    shapes_list = get_all_pptx_shapes(prs)
+    total = len(shapes_list) if shapes_list else 1
+    for idx, shape in enumerate(shapes_list):
         if hasattr(shape, "text") and shape.text.strip() and shape.has_text_frame:
-            translated = translator.translate(shape.text, src='en', dest='ar').text
-            shape.text = process_arabic(translated)
-            for para in shape.text_frame.paragraphs:
-                for run in para.runs:
+            translated_text = translator.translate(shape.text, src='en', dest='ar').text
+            translated_text = process_arabic(translated_text)
+            shape.text = translated_text
+            for paragraph in shape.text_frame.paragraphs:
+                for run in paragraph.runs:
                     run.font.name = ARABIC_FONT
                     run.font.size = pptxPt(24)
         if getattr(shape, "has_table", False) and shape.has_table:
@@ -162,11 +197,12 @@ def translate_pptx_with_progress(file_bytes: bytes, progress_callback) -> io.Byt
             for row in table.rows:
                 for cell in row.cells:
                     if cell.text.strip():
-                        translated = translator.translate(cell.text, src='en', dest='ar').text
-                        cell.text = process_arabic(translated)
+                        translated_text = translator.translate(cell.text, src='en', dest='ar').text
+                        translated_text = process_arabic(translated_text)
+                        cell.text = translated_text
                         if cell.text_frame:
-                            for para in cell.text_frame.paragraphs:
-                                for run in para.runs:
+                            for paragraph in cell.text_frame.paragraphs:
+                                for run in paragraph.runs:
                                     run.font.name = ARABIC_FONT
                                     run.font.size = pptxPt(18)
         progress_callback(int((idx+1) / total * 100))
@@ -204,13 +240,11 @@ def update_user_limit(user_id: int):
     else:
         user_daily_limits[user_id] = (date_str, 1)
 
-# ===================== دوال تحويل باستخدام ConvertAPI =====================
-def convert_file(input_path: str, output_format: str, output_path: str):
-    result = convertapi.convert(output_format, {'File': input_path})
-    result.save_files(output_path)
-
 # ===================== دوال البوت =====================
 def start(update: Update, context: CallbackContext) -> None:
+    # تسجيل المستخدم الجديد إذا لم يُسجل مسبقاً
+    record_new_user(update.effective_user, context)
+    
     keyboard = [
         [InlineKeyboardButton("قناة البوت", url="https://t.me/i2pdfbotchannel"),
          InlineKeyboardButton("المطور", url="https://t.me/ta_ja199")]
@@ -219,10 +253,7 @@ def start(update: Update, context: CallbackContext) -> None:
     update.message.reply_text("مرحباً! هل أنت مستعد؟\nأرسل لي ملف PDF أو DOCX أو PPTX.", reply_markup=reply_markup)
 
 def handle_file(update: Update, context: CallbackContext) -> None:
-    user = update.message.from_user
-    user_id = user.id
-    add_user(user_id, user.username or "", user.first_name or "", user.last_name or "")
-    
+    user_id = update.message.from_user.id
     if len(update.message.document.file_id.split()) > 1:
         update.message.reply_text("يرجى إرسال ملف واحد فقط في كل مرة.")
         return
@@ -259,20 +290,7 @@ def handle_file(update: Update, context: CallbackContext) -> None:
     else:
         update.message.reply_text("صيغة الملف غير مدعومة.")
 
-def update_progress(context: CallbackContext, chat_id: int, message_id: int, percentage: int):
-    try:
-        context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"جارٍ الترجمة: {percentage}%")
-    except Exception:
-        pass
-
-def cleanup_files(files: list):
-    for path in files:
-        try:
-            if os.path.exists(path):
-                os.remove(path)
-        except Exception:
-            pass
-
+# ===================== دوال المعالجة في CallbackQuery =====================
 def button_handler(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
     query.answer()
@@ -304,7 +322,7 @@ def process_pdf_file(action: str, update: Update, context: CallbackContext):
     pdf_file = context.bot.getFile(file_id)
     pdf_file.download(input_pdf_path)
 
-    query.edit_message_text(f"جارٍ تحويل الملف من PDF إلى {ext.upper()} ...")
+    query.edit_message_text("جارٍ تحويل الملف من PDF إلى " + ext.upper() + " ...")
     try:
         convert_file(input_pdf_path, ext, converted_path)
     except Exception as e:
@@ -346,15 +364,14 @@ def process_pdf_file(action: str, update: Update, context: CallbackContext):
         return
 
     query.edit_message_text("تمت العملية بنجاح!")
+    # إرسال الملف المترجم بصيغته الأصلية
     context.bot.send_document(chat_id=query.message.chat_id, document=open(translated_path, "rb"), filename=os.path.basename(translated_path))
+    # إرسال الملف النهائي بصيغة PDF مع زر "تعديل pdf"
     keyboard = [[InlineKeyboardButton("تعديل pdf", url="https://t.me/i2pdfbot")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     context.bot.send_document(chat_id=query.message.chat_id, document=open(final_pdf_path, "rb"), filename=os.path.basename(final_pdf_path), reply_markup=reply_markup)
 
-    # إرسال الملف المترجم إلى القناة للمراقبة
-    context.bot.send_document(chat_id=CHANNEL_ID, document=open(translated_path, "rb"), filename=os.path.basename(translated_path))
-
-    update_user_limit(query.from_user.id)
+    update_user_limit(update.callback_query.from_user.id)
     cleanup_files([input_pdf_path, converted_path, translated_path, final_pdf_path])
 
 def process_office_file(update: Update, context: CallbackContext):
@@ -409,22 +426,33 @@ def process_office_file(update: Update, context: CallbackContext):
     reply_markup = InlineKeyboardMarkup(keyboard)
     context.bot.send_document(chat_id=query.message.chat_id, document=open(final_pdf_path, "rb"), filename=os.path.basename(final_pdf_path), reply_markup=reply_markup)
 
-    # إرسال الملف المترجم إلى القناة للمراقبة
-    context.bot.send_document(chat_id=CHANNEL_ID, document=open(translated_path, "rb"), filename=os.path.basename(translated_path))
- 
-    update_user_limit(query.from_user.id)
+    update_user_limit(update.callback_query.from_user.id)
     cleanup_files([input_path, translated_path, final_pdf_path])
 
-def user_count(update: Update, context: CallbackContext) -> None:
-    count = get_user_count()
-    update.message.reply_text(f"عدد المستخدمين الحالي: {count}")
+def update_progress(context: CallbackContext, chat_id: int, message_id: int, percentage: int):
+    try:
+        context.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text=f"جارٍ الترجمة: {percentage}%"
+        )
+    except Exception:
+        pass
 
+def cleanup_files(files: list):
+    for path in files:
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass
+
+# ===================== الدالة الرئيسية =====================
 def main():
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
 
     dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("user", user_count))
     dp.add_handler(MessageHandler(Filters.document, handle_file))
     dp.add_handler(CallbackQueryHandler(button_handler))
     
