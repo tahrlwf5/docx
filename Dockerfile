@@ -5,15 +5,16 @@ FROM python:3.9-slim
 WORKDIR /app
 
 # تحديث pip إلى أحدث إصدار
-RUN pip3 install --upgrade pip
+RUN pip install --upgrade pip
 
 # نسخ الملفات المطلوبة
 COPY requirements.txt .
-COPY bot.py .
-COPY .env .
 
 # تثبيت المتطلبات
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# نسخ باقي الملفات
+COPY . .
 
 # تشغيل البوت
-CMD ["python3", "bot.py"]
+CMD ["python", "bot.py"]
