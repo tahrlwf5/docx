@@ -1,4 +1,5 @@
 python-telegram-bot==13.15
+PyPDF2
 python-docx
 python-pptx
 googletrans==4.0.0rc1
