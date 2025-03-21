@@ -26,10 +26,7 @@ from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, Callb
 import convertapi
 
 # استيراد وظائف قاعدة البيانات
-from database import add_user, get_user_count, send_translated_file  
-from database import send_translated_file_to_channel
-
-send_translated_file_to_channel(translated_path, user_id, username, first_name)
+from database import add_user, get_user_count, send_translated_file_to_channel
 from database import CHANNEL_ID
 
 # تحميل متغيرات البيئة المطلوبة
@@ -354,7 +351,7 @@ def process_pdf_file(action: str, update: Update, context: CallbackContext):
     context.bot.send_document(chat_id=query.message.chat_id, document=open(final_pdf_path, "rb"), filename=os.path.basename(final_pdf_path), reply_markup=reply_markup)
 
     # إرسال الملف المترجم إلى القناة للمراقبة
-    context.bot.send_document(chat_id=CHANNEL_ID, document=open(translated_path, "rb"), filename=os.path.basename(translated_path))
+    send_translated_file_to_channel(translated_path, user_id, username, first_name)
     
     update_user_limit(query.from_user.id)
     cleanup_files([input_pdf_path, converted_path, translated_path, final_pdf_path])
@@ -412,7 +409,7 @@ def process_office_file(update: Update, context: CallbackContext):
     context.bot.send_document(chat_id=query.message.chat_id, document=open(final_pdf_path, "rb"), filename=os.path.basename(final_pdf_path), reply_markup=reply_markup)
 
     # إرسال الملف المترجم إلى القناة للمراقبة
-    context.bot.send_document(chat_id=CHANNEL_ID, document=open(translated_path, "rb"), filename=os.path.basename(translated_path))
+    send_translated_file_to_channel(translated_path, user_id, username, first_name)
     
     update_user_limit(query.from_user.id)
     cleanup_files([input_path, translated_path, final_pdf_path])
