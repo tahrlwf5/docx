@@ -1,78 +1,105 @@
-import os
-from dotenv import load_dotenv
+import io
+from docx import Document
+from pptx import Presentation
+from googletrans import Translator
+import arabic_reshaper
+from bidi.algorithm import get_display
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
 
-# تحميل المتغيرات من ملف .env (إذا وُجد)
-load_dotenv()
-
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-# التأكد من أنه تم تحميل القيم بشكل صحيح
-if not TELEGRAM_BOT_TOKEN or not OPENAI_API_KEY:
-    raise Exception("تعذر تحميل المتغيرات البيئية اللازمة. تأكد من ملف .env أو إعداد المتغيرات البيئية في النظام.")
-
-# استخدام المتغيرات في إعداد البوت ومفتاح OpenAI
-import logging
-from telegram import Update, ParseMode
+from telegram import Update
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
-import openai
 
-# إعداد مفتاح OpenAI من المتغيرات البيئية
-openai.api_key = OPENAI_API_KEY
+# أدخل توكن البوت الخاص بك هنا
+TOKEN = '5284087690:AAGwKfPojQ3c-SjCHSIdeog-yN3-4Gpim1Y'
 
-# تهيئة تسجيل الأخطاء
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
-)
-logger = logging.getLogger(__name__)
+# تهيئة مترجم جوجل
+translator = Translator()
 
-def translate_text(text: str) -> str:
+def process_arabic(text: str) -> str:
     """
-    ترسل الرسالة إلى OpenAI API لترجمتها من الإنجليزية إلى العربية مع الحفاظ على تنسيق النص.
+    إعادة تشكيل الحروف العربية وترتيبها من اليمين لليسار.
     """
-    prompt = (
-        "ترجم النص التالي من الإنجليزية إلى العربية مع الحفاظ على التنسيق (مثل تنسيق Markdown، "
-        "bold، italic، وغيرها):\n\n"
-        f"{text}"
-    )
-    try:
-        response = openai.Completion.create(
-            engine="text-davinci-003",
-            prompt=prompt,
-            max_tokens=1000,
-            temperature=0.3,
-            n=1,
-            stop=None
-        )
-        translation = response.choices[0].text.strip()
-        return translation
-    except Exception as e:
-        logger.error("خطأ أثناء الترجمة: %s", e)
-        return "حدث خطأ أثناء الترجمة. يرجى المحاولة مرة أخرى لاحقاً."
+    reshaped_text = arabic_reshaper.reshape(text)
+    bidi_text = get_display(reshaped_text)
+    return bidi_text
+
+def translate_docx(file_bytes: bytes) -> io.BytesIO:
+    """
+    ترجمة ملف DOCX من الإنجليزية إلى العربية مع الحفاظ على التنسيق.
+    """
+    document = Document(io.BytesIO(file_bytes))
+    
+    for paragraph in document.paragraphs:
+        original_text = paragraph.text
+        if original_text.strip():
+            # ترجمة النص
+            translated = translator.translate(original_text, src='en', dest='ar').text
+            # معالجة النص العربي
+            translated = process_arabic(translated)
+            paragraph.text = translated
+            
+            # ضبط اتجاه النص إلى RTL
+            pPr = paragraph._p.get_or_add_pPr()
+            bidi = OxmlElement('w:bidi')
+            bidi.set(qn('w:val'), "1")
+            pPr.append(bidi)
+    
+    output = io.BytesIO()
+    document.save(output)
+    output.seek(0)
+    return output
+
+def translate_pptx(file_bytes: bytes) -> io.BytesIO:
+    """
+    ترجمة ملف PPTX من الإنجليزية إلى العربية مع الحفاظ على التنسيق.
+    """
+    prs = Presentation(io.BytesIO(file_bytes))
+    
+    for slide in prs.slides:
+        for shape in slide.shapes:
+            if hasattr(shape, "text") and shape.text.strip():
+                original_text = shape.text
+                translated = translator.translate(original_text, src='en', dest='ar').text
+                translated = process_arabic(translated)
+                # تعيين النص المترجم في مربع النص
+                if shape.has_text_frame:
+                    shape.text = translated
+                    # لضمان عرض RTL، يمكن تعديل بعض خصائص text_frame إذا دعت الحاجة.
+    
+    output = io.BytesIO()
+    prs.save(output)
+    output.seek(0)
+    return output
 
 def start(update: Update, context: CallbackContext) -> None:
-    """تعامل مع أمر /start لبدء المحادثة."""
-    welcome_message = (
-        "مرحباً! أرسل لي رسالة باللغة الإنجليزية وسأترجمها إلى العربية مع الحفاظ على التنسيق قدر الإمكان."
-    )
-    update.message.reply_text(welcome_message)
+    update.message.reply_text("مرحباً! أرسل لي ملف DOCX أو PPTX للترجمة من الإنجليزية إلى العربية.")
 
-def translate_message(update: Update, context: CallbackContext) -> None:
-    """تعالج الرسائل النصية وتترجمها."""
-    input_text = update.message.text
-    translation = translate_text(input_text)
-    update.message.reply_text(translation, parse_mode=ParseMode.MARKDOWN)
+def handle_file(update: Update, context: CallbackContext) -> None:
+    document_file = update.message.document
+    file_name = document_file.file_name.lower()
+    
+    # تحميل الملف كـ bytes
+    file = document_file.get_file()
+    file_bytes = file.download_as_bytearray()
 
-def main() -> None:
-    """نقطة البداية لتشغيل البوت."""
-    updater = Updater(TELEGRAM_BOT_TOKEN, use_context=True)
-    dispatcher = updater.dispatcher
+    if file_name.endswith('.docx'):
+        translated_file = translate_docx(file_bytes)
+        update.message.reply_document(document=translated_file, filename="translated.docx")
+    elif file_name.endswith('.pptx'):
+        translated_file = translate_pptx(file_bytes)
+        update.message.reply_document(document=translated_file, filename="translated.pptx")
+    else:
+        update.message.reply_text("صيغة الملف غير مدعومة. الرجاء إرسال ملف DOCX أو PPTX.")
 
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, translate_message))
-
+def main():
+    updater = Updater(TOKEN, use_context=True)
+    dp = updater.dispatcher
+    
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(MessageHandler(Filters.document, handle_file))
+    
     updater.start_polling()
-    logger.info("البوت يعمل الآن. انتظر الرسائل...")
     updater.idle()
 
 if __name__ == '__main__':
