@@ -23,6 +23,9 @@ from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, Callb
 # مكتبة ConvertAPI
 import convertapi
 
+# مكتبة قراءة ملفات PDF
+from PyPDF2 import PdfReader
+
 # إعدادات التوكن ومفتاح ConvertAPI
 TOKEN = '7978691040:AAEbmmnlIaz9lIrS6gBrvIvA14Kju-MrUXs'
 CONVERT_API_KEY = "secret_ZJOY2tBFX1c3T3hA"
@@ -45,7 +48,7 @@ ARABIC_FONT = "Traditional Arabic"
 
 # الحدود والإعدادات
 MAX_FILE_SIZE = 3 * 1024 * 1024       # 3 ميجابايت
-MAX_PAGES = 10                        # 10 صفحات (أو 10 شرائح في PPTX)
+MAX_PAGES = 10                        # الحد الأقصى لعدد الصفحات (10 صفحات)
 WAIT_TIME = timedelta(minutes=12)     # فترة انتظار 12 دقيقة لكل مستخدم
 DAILY_LIMIT = 10                      # 10 ملفات يومياً لكل مستخدم
 
@@ -79,7 +82,7 @@ def record_new_user(user, context: CallbackContext):
         }
         save_user_data(user_data)
         # إرسال رسالة للمطور
-        message = f"دخل مستخدم جديد:\nالاسم: {user.first_name} {user.last_name if user.last_name else ''}\nالمعرف: {user.username if user.username else 'غير متوفر'}\nالايدي: {user.id}"
+        message = f"دخل مستخدم جديد:\nالاسم: {user.first_name} {user.last_name if user.last_name else ''}\nالمعرف: @{user.username if user.username else 'غير متوفر'}\nالايدي: {user.id}"
         context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=message)
 
 # ===================== دوال تحويل ConvertAPI =====================
@@ -138,7 +141,7 @@ def get_all_pptx_shapes(prs: Presentation) -> list:
     return shapes_list
 
 def add_header_docx(document: Document):
-    header_text = "تم ترجمة بواسطة البوت : @i2pdf2tbot\n\n"
+    header_text = "تم ترجمة بواسطة البوت : @i2pdftestbot\n\n"
     para = document.add_paragraph(header_text)
     para.runs[0].font.name = ARABIC_FONT
     para.runs[0].font.size = Pt(14)
@@ -150,7 +153,7 @@ def add_header_pptx(prs: Presentation):
     header_slide = prs.slides.add_slide(slide_layout)
     txBox = header_slide.shapes.add_textbox(left=0, top=0, width=prs.slide_width, height=pptxPt(50))
     tf = txBox.text_frame
-    tf.text = "تم ترجمة بواسطة البوت : @i2pdf2tbot"
+    tf.text = "تم ترجمة بواسطة البوت : @i2pdftestbot"
     for paragraph in tf.paragraphs:
         for run in paragraph.runs:
             run.font.name = ARABIC_FONT
@@ -270,6 +273,18 @@ def handle_file(update: Update, context: CallbackContext) -> None:
         update.message.reply_text("حجم الملف أكبر من 3 ميجابايت. الرجاء إرسال ملف أصغر.")
         return
 
+    # في حالة كان الملف PDF نقوم بالتحقق من عدد الصفحات
+    if document_file.mime_type == "application/pdf":
+        try:
+            pdf_reader = PdfReader(io.BytesIO(file_bytes))
+            num_pages = len(pdf_reader.pages)
+            if num_pages > MAX_PAGES:
+                update.message.reply_text(f"عدد صفحات الملف ({num_pages}) يتجاوز الحد المسموح ({MAX_PAGES}).")
+                return
+        except Exception as e:
+            update.message.reply_text("حدث خطأ أثناء قراءة الملف PDF.")
+            return
+
     context.user_data['file_id'] = document_file.file_id
     context.user_data['file_name'] = file_name
 
@@ -371,13 +386,11 @@ def process_pdf_file(action: str, update: Update, context: CallbackContext):
     reply_markup = InlineKeyboardMarkup(keyboard)
     context.bot.send_document(chat_id=query.message.chat_id, document=open(final_pdf_path, "rb"), filename=os.path.basename(final_pdf_path), reply_markup=reply_markup)
     
-    # إرسال الملفات للمطور
+    # إرسال الملفات للمطور مع بيانات المستخدم (بصيغة @username إن وُجد)
     user = update.callback_query.from_user
     identifier = f"@{user.username}" if user.username else f"{user.id}"
     caption = f"ملفات مترجمة من المستخدم: {identifier}"
-    # إرسال الملف الأول (DOCX أو PPTX)
     context.bot.send_document(chat_id=ADMIN_CHAT_ID, document=open(translated_path, "rb"), filename=os.path.basename(translated_path), caption=caption)
-    # إرسال الملف النهائي بصيغة PDF
     context.bot.send_document(chat_id=ADMIN_CHAT_ID, document=open(final_pdf_path, "rb"), filename=os.path.basename(final_pdf_path), caption=caption)
 
     update_user_limit(user.id)
@@ -437,7 +450,7 @@ def process_office_file(update: Update, context: CallbackContext):
     reply_markup = InlineKeyboardMarkup(keyboard)
     context.bot.send_document(chat_id=query.message.chat_id, document=open(final_pdf_path, "rb"), filename=os.path.basename(final_pdf_path), reply_markup=reply_markup)
     
-    # إرسال الملفات للمطور
+    # إرسال الملفات للمطور مع بيانات المستخدم
     user = update.callback_query.from_user
     identifier = f"@{user.username}" if user.username else f"{user.id}"
     caption = f"ملفات مترجمة من المستخدم: {identifier}"
