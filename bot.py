@@ -101,13 +101,16 @@ def set_paragraph_rtl(paragraph):
     bidi = OxmlElement('w:bidi')
     bidi.set(qn('w:val'), "1")
     pPr.append(bidi)
-
 def translate_paragraph(paragraph):
     for run in paragraph.runs:
         if run.text.strip():
-            # استخدام deep-translator بدلاً من googletrans
+            # محاولة ترجمة النص باستخدام deep-translator
             translated_text = GoogleTranslator(source='en', target='ar').translate(run.text)
-            translated_text = process_arabic(translated_text)
+            # إذا كانت النتيجة None، نستخدم النص الأصلي كاحتياطي
+            if translated_text is None:
+                translated_text = run.text
+            else:
+                translated_text = process_arabic(translated_text)
             run.text = translated_text
             run.font.name = ARABIC_FONT
             run.font.size = Pt(14)
