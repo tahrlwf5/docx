@@ -108,8 +108,8 @@ def set_paragraph_rtl(paragraph):
 def translate_paragraph(paragraph):
     for run in paragraph.runs:
         if run.text.strip():
-            translated_text = translator.translate(run.text, src='en', dest='ar').text
-            translated_text = process_arabic(translated_text)
+            translated_result = translator.translate(run.text, src='en', dest='ar')  # بدون await
+            translated_text = process_arabic(translated_result.text)  # استخراج النص المترجم
             run.text = translated_text
             run.font.name = ARABIC_FONT
             run.font.size = Pt(14)
