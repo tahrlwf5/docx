@@ -103,17 +103,21 @@ def set_paragraph_rtl(paragraph):
     pPr.append(bidi)
 def translate_paragraph(paragraph):
     for run in paragraph.runs:
+        # إذا كان الـ run يحتوي على رسم، نتركه دون ترجمة ونضيف سطر جديد إذا لم يكن ينتهي بسطر جديد
+        if "<w:drawing" in run._r.xml:
+            if not run.text.endswith("\n"):
+                run.text += "\n"
+            continue
         if run.text.strip():
-            # محاولة ترجمة النص باستخدام deep-translator
+            original_size = run.font.size if run.font.size is not None else Pt(14)
             translated_text = GoogleTranslator(source='en', target='ar').translate(run.text)
-            # إذا كانت النتيجة None، نستخدم النص الأصلي كاحتياطي
             if translated_text is None:
                 translated_text = run.text
             else:
                 translated_text = process_arabic(translated_text)
             run.text = translated_text
             run.font.name = ARABIC_FONT
-            run.font.size = Pt(14)
+            run.font.size = original_size
     set_paragraph_rtl(paragraph)
 
 def count_docx_pages(document: Document) -> int:
