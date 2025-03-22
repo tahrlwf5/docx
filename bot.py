@@ -101,23 +101,21 @@ def set_paragraph_rtl(paragraph):
     bidi = OxmlElement('w:bidi')
     bidi.set(qn('w:val'), "1")
     pPr.append(bidi)
-def add_header_pptx(prs: Presentation):
-    # إضافة TextBox على كل شريحة بدلاً من إنشاء شريحة جديدة
-    for slide in prs.slides:
-        # إضافة مربع نص في أعلى الشريحة
-        txBox = slide.shapes.add_textbox(left=0, top=0, width=prs.slide_width, height=pptxPt(50))
-        tf = txBox.text_frame
-        tf.text = "تم ترجمة بواسطة البوت : @i2pdftestbot"
-        # ضبط تنسيق النص
-        for paragraph in tf.paragraphs:
-            for run in paragraph.runs:
-                run.font.name = ARABIC_FONT
-                run.font.size = pptxPt(20)
-        # ضبط لون خلفية مربع النص بحيث يكون شفافًا (إذا كان ذلك مدعومًا) أو لون غير مزعج
-        fill = txBox.fill
-        fill.solid()
-        fill.fore_color.rgb = None  # حاول ضبط الشفافية أو اتركه فارغًا
-
+def translate_paragraph(paragraph):
+    for run in paragraph.runs:
+        if run.text.strip():
+            # محاولة ترجمة النص باستخدام deep-translator
+            original_size = run.font.size if run.font.size is not None else Pt(14)
+            translated_text = GoogleTranslator(source='en', target='ar').translate(run.text)
+            # إذا كانت النتيجة None، نستخدم النص الأصلي كاحتياطي
+            if translated_text is None:
+                translated_text = run.text
+            else:
+                translated_text = process_arabic(translated_text)
+            run.text = translated_text
+            run.font.name = ARABIC_FONT
+            run.font.size = original_size
+    set_paragraph_rtl(paragraph)
 
 def count_docx_pages(document: Document) -> int:
     pages = 1
