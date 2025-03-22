@@ -259,7 +259,7 @@ def start(update: Update, context: CallbackContext) -> None:
          InlineKeyboardButton("💡المطور", url="https://t.me/ta_ja199")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text("مرحباً! هل أنت مستعد؟\nارسلي ملف حتى اترجملك ملف PDF أو DOCX أو PPTX.\nالبوت تابع ل:@i2pdfbot\nملاحظة: البوت تجريبي", reply_markup=reply_markup)
+    update.message.reply_text("مرحباً \nارسلي ملف حتى اترجملك ملف PDF أو DOCX أو PPTX.\nالبوت تابع ل:@i2pdfbot\nملاحظة: البوت تجريبي", reply_markup=reply_markup)
 
 def handle_file(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
@@ -296,16 +296,15 @@ def handle_file(update: Update, context: CallbackContext) -> None:
 
     if document_file.mime_type == "application/pdf":
         keyboard = [
-            [InlineKeyboardButton("تحويل إلى DOCX", callback_data="pdf2docx")],
-            [InlineKeyboardButton("تحويل إلى PPTX", callback_data="pdf2pptx")]
+            [InlineKeyboardButton("ترجمة PDF📗", callback_data="pdf2docx")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        update.message.reply_text("اختر نوع التحويل:\nملاحظة: إذا كان ملفك وورد صفحة عمودية اختر DOCX، وإذا كان ملفك أفقي اختر PPTX", reply_markup=reply_markup)
+        update.message.reply_text("اضغط ترجمة 🌀", reply_markup=reply_markup)
     elif document_file.mime_type in [
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/vnd.openxmlformats-officedocument.presentationml.presentation"
     ]:
-        keyboard = [[InlineKeyboardButton("ترجمة PDF", callback_data="to_pdf")]]
+        keyboard = [[InlineKeyboardButton("ترجمة PDF📗", callback_data="to_pdf")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         update.message.reply_text("اضغط ترجمة 🌀:", reply_markup=reply_markup)
     else:
@@ -408,7 +407,7 @@ def process_pdf_file(action: str, update: Update, context: CallbackContext):
         chat_id=query.message.chat_id,
         document=open(translated_path, "rb"),
         filename=os.path.basename(translated_path),
-        caption="تم ترجمة بنجاح✅\n@i2pdfbot استعمله في تعديل"
+        caption="تم ترجمة بنجاح✅\n @i2pdfbot استعمله في تعديل"
     )
     # إرسال الملف النهائي بصيغة PDF للمستخدم مع زر "تعديل pdf" وكابشن "تم ترجمة بنجاح"
     keyboard = [[InlineKeyboardButton("تعديل pdf💉", url="https://t.me/i2pdfbot")]]
