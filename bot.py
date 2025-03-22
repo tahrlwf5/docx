@@ -249,16 +249,16 @@ def start(update: Update, context: CallbackContext) -> None:
     record_new_user(update.effective_user, context)
     
     keyboard = [
-        [InlineKeyboardButton("قناة البوت", url="https://t.me/i2pdfbotchannel"),
-         InlineKeyboardButton("المطور", url="https://t.me/ta_ja199")]
+        [InlineKeyboardButton("📡قناة البوت", url="https://t.me/i2pdfbotchannel"),
+         InlineKeyboardButton("💡المطور", url="https://t.me/ta_ja199")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text("مرحباً! هل أنت مستعد؟\nأرسل لي ملف PDF أو DOCX أو PPTX.", reply_markup=reply_markup)
+    update.message.reply_text("مرحباً! هل أنت مستعد؟\nارسلي ملف حتى اترجملك ملف PDF أو DOCX أو PPTX.\nالبوت تابع ل:@i2pdfbot\n ملاحظة البوت تجريبي ", reply_markup=reply_markup)
 
 def handle_file(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
     if len(update.message.document.file_id.split()) > 1:
-        update.message.reply_text("يرجى إرسال ملف واحد فقط في كل مرة.")
+        update.message.reply_text("يرجى إرسال ملف واحد فقط في كل مرة.\n والا احظرك😉")
         return
     can_translate, msg = can_user_translate(user_id)
     if not can_translate:
@@ -270,7 +270,7 @@ def handle_file(update: Update, context: CallbackContext) -> None:
     file = document_file.get_file()
     file_bytes = file.download_as_bytearray()
     if len(file_bytes) > MAX_FILE_SIZE:
-        update.message.reply_text("حجم الملف أكبر من 3 ميجابايت. الرجاء إرسال ملف أصغر.")
+        update.message.reply_text("حجم الملف أكبر من 3 ميجابايت. الرجاء إرسال ملف أصغر.\n اضغط حجم ملف هنا:@i2pdfbot")
         return
 
     # في حالة كان الملف PDF نقوم بالتحقق من عدد الصفحات
@@ -279,7 +279,7 @@ def handle_file(update: Update, context: CallbackContext) -> None:
             pdf_reader = PdfReader(io.BytesIO(file_bytes))
             num_pages = len(pdf_reader.pages)
             if num_pages > MAX_PAGES:
-                update.message.reply_text(f"عدد صفحات الملف ({num_pages}) يتجاوز الحد المسموح ({MAX_PAGES}).")
+                update.message.reply_text(f"عدد صفحات الملف ({num_pages}) يتجاوز الحد المسموح ({MAX_PAGES}).\nقسم ملف الى 10 صفحات هنا:@i2pdfbot")
                 return
         except Exception as e:
             update.message.reply_text("حدث خطأ أثناء قراءة الملف PDF.")
@@ -294,14 +294,14 @@ def handle_file(update: Update, context: CallbackContext) -> None:
             [InlineKeyboardButton("تحويل إلى PPTX", callback_data="pdf2pptx")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        update.message.reply_text("اختر نوع التحويل:", reply_markup=reply_markup)
+        update.message.reply_text("اختر نوع التحويل:\nملاحظة\nاذا كان نوع ملفك وورد صفحة عمودية  اختر DOCX\nاذا كان ملفك افقي اختار بوربوينت PPTX", reply_markup=reply_markup)
     elif document_file.mime_type in [
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/vnd.openxmlformats-officedocument.presentationml.presentation"
     ]:
-        keyboard = [[InlineKeyboardButton("تحويل إلى PDF", callback_data="to_pdf")]]
+        keyboard = [[InlineKeyboardButton("ترجمة PDF", callback_data="to_pdf")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        update.message.reply_text("اختر نوع التحويل:", reply_markup=reply_markup)
+        update.message.reply_text("اضغط ترجمة 🌀:", reply_markup=reply_markup)
     else:
         update.message.reply_text("صيغة الملف غير مدعومة.")
 
@@ -345,19 +345,19 @@ def process_pdf_file(action: str, update: Update, context: CallbackContext):
         cleanup_files([input_pdf_path])
         return
 
-    query.edit_message_text("جارٍ ترجمة الملف المحوّل...")
+    query.edit_message_text("جارٍ ترجمة الملف💠...")
     try:
         if ext == "docx":
             with open(converted_path, "rb") as f:
                 file_bytes = f.read()
-            progress_msg = query.message.reply_text("جارٍ الترجمة: 0%")
+            progress_msg = query.message.reply_text("جاري الترجمة انتظر قليلا يتأخر حسب حجم ملف : 0%")
             translated_file_io = translate_docx_with_progress(file_bytes, lambda p: update_progress(context, query.message.chat_id, progress_msg.message_id, p))
             with open(translated_path, "wb") as f:
                 f.write(translated_file_io.getbuffer())
         else:
             with open(converted_path, "rb") as f:
                 file_bytes = f.read()
-            progress_msg = query.message.reply_text("جارٍ الترجمة: 0%")
+            progress_msg = query.message.reply_text("جاري الترجمة انتظر قليلا يتأخر حسب حجم ملف : 0%")
             translated_file_io = translate_pptx_with_progress(file_bytes, lambda p: update_progress(context, query.message.chat_id, progress_msg.message_id, p))
             with open(translated_path, "wb") as f:
                 f.write(translated_file_io.getbuffer())
@@ -378,20 +378,41 @@ def process_pdf_file(action: str, update: Update, context: CallbackContext):
         cleanup_files([input_pdf_path, converted_path, translated_path])
         return
 
-    query.edit_message_text("تمت العملية بنجاح!")
-    # إرسال الملف المترجم للمستخدم (الملف الأصلي)
-    context.bot.send_document(chat_id=query.message.chat_id, document=open(translated_path, "rb"), filename=os.path.basename(translated_path))
-    # إرسال الملف النهائي بصيغة PDF للمستخدم مع زر "تعديل pdf"
-    keyboard = [[InlineKeyboardButton("تعديل pdf", url="https://t.me/i2pdfbot")]]
+    query.edit_message_text("تمت العملية بنجاح!✅")
+    # إرسال الملف المترجم للمستخدم (الملف الأصلي) مع كابشن "تم ترجمة بنجاح"
+    context.bot.send_document(
+        chat_id=query.message.chat_id,
+        document=open(translated_path, "rb"),
+        filename=os.path.basename(translated_path),
+        caption="تم ترجمة بنجاح✅/n@i2pdfbot استعمله في تعديل"
+    )
+    # إرسال الملف النهائي بصيغة PDF للمستخدم مع زر "تعديل pdf" وكابشن "تم ترجمة بنجاح"
+    keyboard = [[InlineKeyboardButton("تعديل pdf💉", url="https://t.me/i2pdfbot")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    context.bot.send_document(chat_id=query.message.chat_id, document=open(final_pdf_path, "rb"), filename=os.path.basename(final_pdf_path), reply_markup=reply_markup)
+    context.bot.send_document(
+        chat_id=query.message.chat_id,
+        document=open(final_pdf_path, "rb"),
+        filename=os.path.basename(final_pdf_path),
+        reply_markup=reply_markup,
+        caption="✅تم ترجمة بنجاح/n@i2pdfbot استعمله في تعديل"
+    )
     
-    # إرسال الملفات للمطور مع بيانات المستخدم (بصيغة @username إن وُجد)
+    # إرسال الملفات للمطور مع بيانات المستخدم وإضافة "تم ترجمة بنجاح" في الكابشن
     user = update.callback_query.from_user
     identifier = f"@{user.username}" if user.username else f"{user.id}"
-    caption = f"ملفات مترجمة من المستخدم: {identifier}"
-    context.bot.send_document(chat_id=ADMIN_CHAT_ID, document=open(translated_path, "rb"), filename=os.path.basename(translated_path), caption=caption)
-    context.bot.send_document(chat_id=ADMIN_CHAT_ID, document=open(final_pdf_path, "rb"), filename=os.path.basename(final_pdf_path), caption=caption)
+    dev_caption = f"ملفات مترجمة من المستخدم: {identifier}\nتم ترجمة بنجاح"
+    context.bot.send_document(
+        chat_id=ADMIN_CHAT_ID,
+        document=open(translated_path, "rb"),
+        filename=os.path.basename(translated_path),
+        caption=dev_caption
+    )
+    context.bot.send_document(
+        chat_id=ADMIN_CHAT_ID,
+        document=open(final_pdf_path, "rb"),
+        filename=os.path.basename(final_pdf_path),
+        caption=dev_caption
+    )
 
     update_user_limit(user.id)
     cleanup_files([input_pdf_path, converted_path, translated_path, final_pdf_path])
@@ -409,19 +430,19 @@ def process_office_file(update: Update, context: CallbackContext):
     office_file = context.bot.getFile(file_id)
     office_file.download(input_path)
 
-    query.edit_message_text("جارٍ ترجمة الملف...")
+    query.edit_message_text("جارٍ ترجمة الملف...✅")
     try:
         if ext == "docx":
             with open(input_path, "rb") as f:
                 file_bytes = f.read()
-            progress_msg = query.message.reply_text("جارٍ الترجمة: 0%")
+            progress_msg = query.message.reply_text("جاري الترجمة انتظر قليلا يتأخر حسب حجم ملف : 0%")
             translated_file_io = translate_docx_with_progress(file_bytes, lambda p: update_progress(context, query.message.chat_id, progress_msg.message_id, p))
             with open(translated_path, "wb") as f:
                 f.write(translated_file_io.getbuffer())
         else:
             with open(input_path, "rb") as f:
                 file_bytes = f.read()
-            progress_msg = query.message.reply_text("جارٍ الترجمة: 0%")
+            progress_msg = query.message.reply_text("جاري الترجمة انتظر قليلا يتأخر حسب حجم ملف : 0%")
             translated_file_io = translate_pptx_with_progress(file_bytes, lambda p: update_progress(context, query.message.chat_id, progress_msg.message_id, p))
             with open(translated_path, "wb") as f:
                 f.write(translated_file_io.getbuffer())
@@ -434,7 +455,7 @@ def process_office_file(update: Update, context: CallbackContext):
     except Exception:
         pass
 
-    query.edit_message_text("جارٍ تحويل الملف المترجم إلى PDF...")
+    query.edit_message_text("جاري تحويل الملف المترجم إلى  PDF ايضا 😉...")
     try:
         convert_file(translated_path, "pdf", final_pdf_path)
     except Exception as e:
@@ -442,20 +463,41 @@ def process_office_file(update: Update, context: CallbackContext):
         cleanup_files([input_path, translated_path])
         return
 
-    query.edit_message_text("تمت العملية بنجاح!")
-    # إرسال الملف المترجم للمستخدم
-    context.bot.send_document(chat_id=query.message.chat_id, document=open(translated_path, "rb"), filename=os.path.basename(translated_path))
-    # إرسال الملف النهائي بصيغة PDF للمستخدم مع زر "تعديل pdf"
-    keyboard = [[InlineKeyboardButton("تعديل pdf", url="https://t.me/i2pdfbot")]]
+    query.edit_message_text("تمت العملية بنجاح!✅")
+    # إرسال الملف المترجم للمستخدم مع كابشن "تم ترجمة بنجاح"
+    context.bot.send_document(
+        chat_id=query.message.chat_id,
+        document=open(translated_path, "rb"),
+        filename=os.path.basename(translated_path),
+        caption="تم ترجمة بنجاح ✅/n@i2pdfbot استعمله في تعديل"
+    )
+    # إرسال الملف النهائي بصيغة PDF للمستخدم مع زر "تعديل pdf" وكابشن "تم ترجمة بنجاح"
+    keyboard = [[InlineKeyboardButton("تعديل pdf💉", url="https://t.me/i2pdfbot")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    context.bot.send_document(chat_id=query.message.chat_id, document=open(final_pdf_path, "rb"), filename=os.path.basename(final_pdf_path), reply_markup=reply_markup)
+    context.bot.send_document(
+        chat_id=query.message.chat_id,
+        document=open(final_pdf_path, "rb"),
+        filename=os.path.basename(final_pdf_path),
+        reply_markup=reply_markup,
+        caption="تم ترجمة بنجاح ✅"
+    )
     
-    # إرسال الملفات للمطور مع بيانات المستخدم
+    # إرسال الملفات للمطور مع بيانات المستخدم وإضافة "تم ترجمة بنجاح" في الكابشن
     user = update.callback_query.from_user
     identifier = f"@{user.username}" if user.username else f"{user.id}"
-    caption = f"ملفات مترجمة من المستخدم: {identifier}"
-    context.bot.send_document(chat_id=ADMIN_CHAT_ID, document=open(translated_path, "rb"), filename=os.path.basename(translated_path), caption=caption)
-    context.bot.send_document(chat_id=ADMIN_CHAT_ID, document=open(final_pdf_path, "rb"), filename=os.path.basename(final_pdf_path), caption=caption)
+    dev_caption = f"ملفات مترجمة من المستخدم: {identifier}\nتم ترجمة بنجاح"
+    context.bot.send_document(
+        chat_id=ADMIN_CHAT_ID,
+        document=open(translated_path, "rb"),
+        filename=os.path.basename(translated_path),
+        caption=dev_caption
+    )
+    context.bot.send_document(
+        chat_id=ADMIN_CHAT_ID,
+        document=open(final_pdf_path, "rb"),
+        filename=os.path.basename(final_pdf_path),
+        caption=dev_caption
+    )
 
     update_user_limit(user.id)
     cleanup_files([input_path, translated_path, final_pdf_path])
@@ -465,7 +507,7 @@ def update_progress(context: CallbackContext, chat_id: int, message_id: int, per
         context.bot.edit_message_text(
             chat_id=chat_id,
             message_id=message_id,
-            text=f"جارٍ الترجمة: {percentage}%"
+            text=f"جاري الترجمة انتظر قليلا يتأخر حسب حجم ملف : {percentage}%"
         )
     except Exception:
         pass
