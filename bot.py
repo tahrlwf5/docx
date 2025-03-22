@@ -9,8 +9,8 @@ from docx.oxml.ns import qn
 from pptx import Presentation
 from pptx.util import Pt as pptxPt
 
-# مكتبة الترجمة
-from googletrans import Translator
+# استخدام deep-translator بدلاً من googletrans
+from deep_translator import GoogleTranslator
 
 # مكتبات معالجة النص العربي
 import arabic_reshaper
@@ -20,7 +20,7 @@ from bidi.algorithm import get_display
 from telegram import Update, Message, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, CallbackQueryHandler
 
-# مكتبة ConvertAPI
+# مكتبة ConvertAPI لتحويل الملفات
 import convertapi
 
 # مكتبة قراءة ملفات PDF
@@ -38,9 +38,6 @@ ADMIN_CHAT_ID = 5198110160
 # مجلد التخزين المؤقت
 TEMP_FOLDER = "temp_files"
 os.makedirs(TEMP_FOLDER, exist_ok=True)
-
-# تهيئة مترجم جوجل
-translator = Translator()
 
 # إعدادات المعالجة والخطوط
 apply_arabic_processing = False  # قم بتعديلها حسب الحاجة
@@ -108,8 +105,9 @@ def set_paragraph_rtl(paragraph):
 def translate_paragraph(paragraph):
     for run in paragraph.runs:
         if run.text.strip():
-            translated_result = translator.translate(run.text, src='en', dest='ar')  # بدون await
-            translated_text = process_arabic(translated_result.text)  # استخراج النص المترجم
+            # استخدام deep-translator بدلاً من googletrans
+            translated_text = GoogleTranslator(source='en', target='ar').translate(run.text)
+            translated_text = process_arabic(translated_text)
             run.text = translated_text
             run.font.name = ARABIC_FONT
             run.font.size = Pt(14)
@@ -188,7 +186,7 @@ def translate_pptx_with_progress(file_bytes: bytes, progress_callback) -> io.Byt
     total = len(shapes_list) if shapes_list else 1
     for idx, shape in enumerate(shapes_list):
         if hasattr(shape, "text") and shape.text.strip() and shape.has_text_frame:
-            translated_text = translator.translate(shape.text, src='en', dest='ar').text
+            translated_text = GoogleTranslator(source='en', target='ar').translate(shape.text)
             translated_text = process_arabic(translated_text)
             shape.text = translated_text
             for paragraph in shape.text_frame.paragraphs:
@@ -200,7 +198,7 @@ def translate_pptx_with_progress(file_bytes: bytes, progress_callback) -> io.Byt
             for row in table.rows:
                 for cell in row.cells:
                     if cell.text.strip():
-                        translated_text = translator.translate(cell.text, src='en', dest='ar').text
+                        translated_text = GoogleTranslator(source='en', target='ar').translate(cell.text)
                         translated_text = process_arabic(translated_text)
                         cell.text = translated_text
                         if cell.text_frame:
@@ -243,6 +241,11 @@ def update_user_limit(user_id: int):
     else:
         user_daily_limits[user_id] = (date_str, 1)
 
+# ===================== دوال تحويل باستخدام ConvertAPI =====================
+def convert_file(input_path: str, output_format: str, output_path: str):
+    result = convertapi.convert(output_format, {'File': input_path})
+    result.save_files(output_path)
+
 # ===================== دوال البوت =====================
 def start(update: Update, context: CallbackContext) -> None:
     # تسجيل المستخدم الجديد إذا لم يُسجل مسبقاً
@@ -253,12 +256,12 @@ def start(update: Update, context: CallbackContext) -> None:
          InlineKeyboardButton("💡المطور", url="https://t.me/ta_ja199")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text("مرحباً! هل أنت مستعد؟\nارسلي ملف حتى اترجملك ملف PDF أو DOCX أو PPTX.\nالبوت تابع ل:@i2pdfbot\n ملاحظة البوت تجريبي ", reply_markup=reply_markup)
+    update.message.reply_text("مرحباً! هل أنت مستعد؟\nارسلي ملف حتى اترجملك ملف PDF أو DOCX أو PPTX.\nالبوت تابع ل:@i2pdfbot\nملاحظة: البوت تجريبي", reply_markup=reply_markup)
 
 def handle_file(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
     if len(update.message.document.file_id.split()) > 1:
-        update.message.reply_text("يرجى إرسال ملف واحد فقط في كل مرة.\n والا احظرك😉")
+        update.message.reply_text("يرجى إرسال ملف واحد فقط في كل مرة.\nوإلا احظرك 😉")
         return
     can_translate, msg = can_user_translate(user_id)
     if not can_translate:
@@ -270,7 +273,7 @@ def handle_file(update: Update, context: CallbackContext) -> None:
     file = document_file.get_file()
     file_bytes = file.download_as_bytearray()
     if len(file_bytes) > MAX_FILE_SIZE:
-        update.message.reply_text("حجم الملف أكبر من 3 ميجابايت. الرجاء إرسال ملف أصغر.\n اضغط حجم ملف هنا:@i2pdfbot")
+        update.message.reply_text("حجم الملف أكبر من 3 ميجابايت. الرجاء إرسال ملف أصغر.\nاضغط هنا لحجم الملف: @i2pdfbot")
         return
 
     # في حالة كان الملف PDF نقوم بالتحقق من عدد الصفحات
@@ -279,7 +282,7 @@ def handle_file(update: Update, context: CallbackContext) -> None:
             pdf_reader = PdfReader(io.BytesIO(file_bytes))
             num_pages = len(pdf_reader.pages)
             if num_pages > MAX_PAGES:
-                update.message.reply_text(f"عدد صفحات الملف ({num_pages}) يتجاوز الحد المسموح ({MAX_PAGES}).\nقسم ملف الى 10 صفحات هنا:@i2pdfbot")
+                update.message.reply_text(f"عدد صفحات الملف ({num_pages}) يتجاوز الحد المسموح ({MAX_PAGES}).\nقسم الملف إلى 10 صفحات: @i2pdfbot")
                 return
         except Exception as e:
             update.message.reply_text("حدث خطأ أثناء قراءة الملف PDF.")
@@ -294,7 +297,7 @@ def handle_file(update: Update, context: CallbackContext) -> None:
             [InlineKeyboardButton("تحويل إلى PPTX", callback_data="pdf2pptx")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        update.message.reply_text("اختر نوع التحويل:\nملاحظة\nاذا كان نوع ملفك وورد صفحة عمودية  اختر DOCX\nاذا كان ملفك افقي اختار بوربوينت PPTX", reply_markup=reply_markup)
+        update.message.reply_text("اختر نوع التحويل:\nملاحظة: إذا كان ملفك وورد صفحة عمودية اختر DOCX، وإذا كان ملفك أفقي اختر PPTX", reply_markup=reply_markup)
     elif document_file.mime_type in [
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/vnd.openxmlformats-officedocument.presentationml.presentation"
@@ -305,7 +308,20 @@ def handle_file(update: Update, context: CallbackContext) -> None:
     else:
         update.message.reply_text("صيغة الملف غير مدعومة.")
 
-# ===================== دوال المعالجة في CallbackQuery =====================
+def update_progress(context: CallbackContext, chat_id: int, message_id: int, percentage: int):
+    try:
+        context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"جاري الترجمة، انتظر قليلاً: {percentage}%")
+    except Exception:
+        pass
+
+def cleanup_files(files: list):
+    for path in files:
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass
+
 def button_handler(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
     query.answer()
@@ -325,6 +341,11 @@ def button_handler(update: Update, context: CallbackContext) -> None:
 
 def process_pdf_file(action: str, update: Update, context: CallbackContext):
     query = update.callback_query
+    user = query.from_user
+    user_id = user.id
+    username = user.username or "غير متوفر"
+    first_name = user.first_name or "غير متوفر"
+
     file_id = context.user_data.get('file_id')
     file_name = context.user_data.get('file_name')
     ext = "docx" if action == "pdf2docx" else "pptx"
@@ -350,14 +371,14 @@ def process_pdf_file(action: str, update: Update, context: CallbackContext):
         if ext == "docx":
             with open(converted_path, "rb") as f:
                 file_bytes = f.read()
-            progress_msg = query.message.reply_text("جاري الترجمة انتظر قليلا يتأخر حسب حجم ملف : 0%")
+            progress_msg = query.message.reply_text("جاري الترجمة: 0%")
             translated_file_io = translate_docx_with_progress(file_bytes, lambda p: update_progress(context, query.message.chat_id, progress_msg.message_id, p))
             with open(translated_path, "wb") as f:
                 f.write(translated_file_io.getbuffer())
         else:
             with open(converted_path, "rb") as f:
                 file_bytes = f.read()
-            progress_msg = query.message.reply_text("جاري الترجمة انتظر قليلا يتأخر حسب حجم ملف : 0%")
+            progress_msg = query.message.reply_text("جاري الترجمة: 0%")
             translated_file_io = translate_pptx_with_progress(file_bytes, lambda p: update_progress(context, query.message.chat_id, progress_msg.message_id, p))
             with open(translated_path, "wb") as f:
                 f.write(translated_file_io.getbuffer())
@@ -379,12 +400,12 @@ def process_pdf_file(action: str, update: Update, context: CallbackContext):
         return
 
     query.edit_message_text("تمت العملية بنجاح!✅")
-    # إرسال الملف المترجم للمستخدم (الملف الأصلي) مع كابشن "تم ترجمة بنجاح"
+    # إرسال الملف المترجم للمستخدم مع كابشن "تم ترجمة بنجاح"
     context.bot.send_document(
         chat_id=query.message.chat_id,
         document=open(translated_path, "rb"),
         filename=os.path.basename(translated_path),
-        caption="تم ترجمة بنجاح✅/n@i2pdfbot استعمله في تعديل"
+        caption="تم ترجمة بنجاح✅\n@i2pdfbot استعمله في تعديل"
     )
     # إرسال الملف النهائي بصيغة PDF للمستخدم مع زر "تعديل pdf" وكابشن "تم ترجمة بنجاح"
     keyboard = [[InlineKeyboardButton("تعديل pdf💉", url="https://t.me/i2pdfbot")]]
@@ -394,11 +415,10 @@ def process_pdf_file(action: str, update: Update, context: CallbackContext):
         document=open(final_pdf_path, "rb"),
         filename=os.path.basename(final_pdf_path),
         reply_markup=reply_markup,
-        caption="✅تم ترجمة بنجاح/n@i2pdfbot استعمله في تعديل"
+        caption="تم ترجمة بنجاح✅"
     )
     
     # إرسال الملفات للمطور مع بيانات المستخدم وإضافة "تم ترجمة بنجاح" في الكابشن
-    user = update.callback_query.from_user
     identifier = f"@{user.username}" if user.username else f"{user.id}"
     dev_caption = f"ملفات مترجمة من المستخدم: {identifier}\nتم ترجمة بنجاح"
     context.bot.send_document(
@@ -435,14 +455,14 @@ def process_office_file(update: Update, context: CallbackContext):
         if ext == "docx":
             with open(input_path, "rb") as f:
                 file_bytes = f.read()
-            progress_msg = query.message.reply_text("جاري الترجمة انتظر قليلا يتأخر حسب حجم ملف : 0%")
+            progress_msg = query.message.reply_text("جاري الترجمة: 0%")
             translated_file_io = translate_docx_with_progress(file_bytes, lambda p: update_progress(context, query.message.chat_id, progress_msg.message_id, p))
             with open(translated_path, "wb") as f:
                 f.write(translated_file_io.getbuffer())
         else:
             with open(input_path, "rb") as f:
                 file_bytes = f.read()
-            progress_msg = query.message.reply_text("جاري الترجمة انتظر قليلا يتأخر حسب حجم ملف : 0%")
+            progress_msg = query.message.reply_text("جاري الترجمة: 0%")
             translated_file_io = translate_pptx_with_progress(file_bytes, lambda p: update_progress(context, query.message.chat_id, progress_msg.message_id, p))
             with open(translated_path, "wb") as f:
                 f.write(translated_file_io.getbuffer())
@@ -455,7 +475,7 @@ def process_office_file(update: Update, context: CallbackContext):
     except Exception:
         pass
 
-    query.edit_message_text("جاري تحويل الملف المترجم إلى  PDF ايضا 😉...")
+    query.edit_message_text("جارٍ تحويل الملف المترجم إلى PDF... 😉")
     try:
         convert_file(translated_path, "pdf", final_pdf_path)
     except Exception as e:
@@ -469,7 +489,7 @@ def process_office_file(update: Update, context: CallbackContext):
         chat_id=query.message.chat_id,
         document=open(translated_path, "rb"),
         filename=os.path.basename(translated_path),
-        caption="تم ترجمة بنجاح ✅/n@i2pdfbot استعمله في تعديل"
+        caption="تم ترجمة بنجاح ✅\n@i2pdfbot استعمله في تعديل"
     )
     # إرسال الملف النهائي بصيغة PDF للمستخدم مع زر "تعديل pdf" وكابشن "تم ترجمة بنجاح"
     keyboard = [[InlineKeyboardButton("تعديل pdf💉", url="https://t.me/i2pdfbot")]]
@@ -507,7 +527,7 @@ def update_progress(context: CallbackContext, chat_id: int, message_id: int, per
         context.bot.edit_message_text(
             chat_id=chat_id,
             message_id=message_id,
-            text=f"جاري الترجمة انتظر قليلا يتأخر حسب حجم ملف : {percentage}%"
+            text=f"جاري الترجمة: {percentage}%"
         )
     except Exception:
         pass
