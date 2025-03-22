@@ -41,7 +41,7 @@ os.makedirs(TEMP_FOLDER, exist_ok=True)
 
 # إعدادات المعالجة والخطوط
 apply_arabic_processing = False  # قم بتعديلها حسب الحاجة
-ARABIC_FONT = "Traditional Arabic"
+ARABIC_FONT = "Arial"
 
 # الحدود والإعدادات
 MAX_FILE_SIZE = 3 * 1024 * 1024       # 3 ميجابايت
@@ -184,7 +184,7 @@ def translate_docx_with_progress(file_bytes: bytes, progress_callback) -> io.Byt
 def translate_pptx_with_progress(file_bytes: bytes, progress_callback) -> io.BytesIO:
     prs = Presentation(io.BytesIO(file_bytes))
     if len(prs.slides) > MAX_PAGES:
-        raise Exception(f"عدد الشرائح ({len(prs.slides)}) يتجاوز الحد المسموح ({MAX_PAGES}).")
+        raise Exception(f"عدد الشرائح ({len(prs.slides)}) يتجاوز الحد المسموح ({MAX_PAGES}).\n قسم ملفك هنا:@i2pdfbot")
     shapes_list = get_all_pptx_shapes(prs)
     total = len(shapes_list) if shapes_list else 1
     for idx, shape in enumerate(shapes_list):
@@ -223,12 +223,12 @@ def can_user_translate(user_id: int) -> (bool, str):
         elapsed = now - user_last_translation[user_id]
         if elapsed < WAIT_TIME:
             remaining = WAIT_TIME - elapsed
-            return False, f"انتظر {int(remaining.total_seconds()//60)} دقيقة و{int(remaining.total_seconds()%60)} ثانية قبل ترجمة ملف آخر."
+            return False, f"انتظر {int(remaining.total_seconds()//60)} دقيقة و{int(remaining.total_seconds()%60)} ثانية قبل ترجمة ملف آخر.😉"
     date_str = now.strftime("%Y-%m-%d")
     if user_id in user_daily_limits:
         last_date, count = user_daily_limits[user_id]
         if last_date == date_str and count >= DAILY_LIMIT:
-            return False, "لقد تجاوزت الحد اليومي المسموح (10 ملفات)."
+            return False, "لقد تجاوزت الحد اليومي المسموح (10 ملفات). تعال غدا😉"
     return True, ""
 
 def update_user_limit(user_id: int):
@@ -259,7 +259,7 @@ def start(update: Update, context: CallbackContext) -> None:
          InlineKeyboardButton("💡المطور", url="https://t.me/ta_ja199")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text("مرحباً \nارسلي ملف حتى اترجملك ملف PDF أو DOCX أو PPTX.\nالبوت تابع ل:@i2pdfbot\nملاحظة: البوت تجريبي", reply_markup=reply_markup)
+    update.message.reply_text("مرحباً \nارسلي ملف حتى اترجملك  PDF أو DOCX أو PPTX.\nالبوت تابع ل:@i2pdfbot\nملاحظة: البوت تجريبي", reply_markup=reply_markup)
 
 def handle_file(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
@@ -360,7 +360,7 @@ def process_pdf_file(action: str, update: Update, context: CallbackContext):
     pdf_file = context.bot.getFile(file_id)
     pdf_file.download(input_pdf_path)
 
-    query.edit_message_text("جارٍ تحويل الملف من PDF إلى " + ext.upper() + " ...")
+    query.edit_message_text("جاري ترجمة ملفك يرجى الانتظار📕....")
     try:
         convert_file(input_pdf_path, ext, converted_path)
     except Exception as e:
@@ -368,7 +368,7 @@ def process_pdf_file(action: str, update: Update, context: CallbackContext):
         cleanup_files([input_pdf_path])
         return
 
-    query.edit_message_text("جارٍ ترجمة الملف💠...")
+    query.edit_message_text("جارٍ ترجمة الملف(يتأخر حسب حجم ملفك) 📗...")
     try:
         if ext == "docx":
             with open(converted_path, "rb") as f:
@@ -393,7 +393,7 @@ def process_pdf_file(action: str, update: Update, context: CallbackContext):
     except Exception:
         pass
 
-    query.edit_message_text("جارٍ تحويل الملف المترجم إلى PDF...")
+    query.edit_message_text("جارٍ تحويل الملف المترجم إلى PDF...🇮🇶")
     try:
         convert_file(translated_path, "pdf", final_pdf_path)
     except Exception as e:
@@ -491,7 +491,7 @@ def process_office_file(update: Update, context: CallbackContext):
         chat_id=query.message.chat_id,
         document=open(translated_path, "rb"),
         filename=os.path.basename(translated_path),
-        caption="تم ترجمة بنجاح ✅\n@i2pdfbot استعمله في تعديل"
+        caption="تم ترجمة بنجاح ✅\n @i2pdfbot استعمله في تعديل"
     )
     # إرسال الملف النهائي بصيغة PDF للمستخدم مع زر "تعديل pdf" وكابشن "تم ترجمة بنجاح"
     keyboard = [[InlineKeyboardButton("تعديل pdf💉", url="https://t.me/i2pdfbot")]]
