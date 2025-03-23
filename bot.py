@@ -27,7 +27,7 @@ import convertapi
 from PyPDF2 import PdfReader
 
 # إعدادات التوكن ومفتاح ConvertAPI
-TOKEN = '5153049530:AAG4LS17jVZdseUnGkodRpHzZxGLOnzc1gs'
+TOKEN = '5153049530:AAHatZc3pdAII_tjGZtZlw6Cavt4s250lAM'
 CONVERT_API_KEY = "secret_ZJOY2tBFX1c3T3hA"
 convertapi.api_secret = CONVERT_API_KEY
 
