@@ -9,7 +9,6 @@ from docx.oxml.ns import qn
 from pptx import Presentation
 from pptx.util import Pt as pptxPt
 
-# استخدام deep-translator بدلاً من googletrans
 from deep_translator import GoogleTranslator
 
 # مكتبات معالجة النص العربي
