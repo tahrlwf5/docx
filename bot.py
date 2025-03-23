@@ -27,7 +27,7 @@ import convertapi
 from PyPDF2 import PdfReader
 
 # إعدادات التوكن ومفتاح ConvertAPI
-TOKEN = '7978691040:AAEbmmnlIaz9lIrS6gBrvIvA14Kju-MrUXs'
+TOKEN = '5153049530:AAG4LS17jVZdseUnGkodRpHzZxGLOnzc1gs'
 CONVERT_API_KEY = "secret_ZJOY2tBFX1c3T3hA"
 convertapi.api_secret = CONVERT_API_KEY
 
@@ -69,7 +69,6 @@ def record_new_user(user, context: CallbackContext):
     user_data = load_user_data()
     user_id_str = str(user.id)
     if user_id_str not in user_data:
-        # إضافة بيانات المستخدم
         user_data[user_id_str] = {
             "first_name": user.first_name,
             "last_name": user.last_name,
@@ -78,7 +77,6 @@ def record_new_user(user, context: CallbackContext):
             "joined": datetime.now().isoformat()
         }
         save_user_data(user_data)
-        # إرسال رسالة للمطور
         message = f"دخل مستخدم جديد:\nالاسم: {user.first_name} {user.last_name if user.last_name else ''}\nالمعرف: @{user.username if user.username else 'غير متوفر'}\nالايدي: {user.id}"
         context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=message)
 
@@ -101,20 +99,46 @@ def set_paragraph_rtl(paragraph):
     bidi = OxmlElement('w:bidi')
     bidi.set(qn('w:val'), "1")
     pPr.append(bidi)
+
 def translate_paragraph(paragraph):
+    new_runs_data = []
     for run in paragraph.runs:
-        if run.text.strip():
-            # محاولة ترجمة النص باستخدام deep-translator
-            original_size = run.font.size if run.font.size is not None else Pt(14)
-            translated_text = GoogleTranslator(source='en', target='ar').translate(run.text)
-            # إذا كانت النتيجة None، نستخدم النص الأصلي كاحتياطي
-            if translated_text is None:
-                translated_text = run.text
-            else:
-                translated_text = process_arabic(translated_text)
-            run.text = translated_text
-            run.font.name = ARABIC_FONT
-            run.font.size = original_size
+        original_text = run.text
+        if not original_text.strip():
+            new_runs_data.append({
+                "text": original_text,
+                "font_name": run.font.name,
+                "font_size": run.font.size,
+                "bold": run.font.bold,
+                "italic": run.font.italic,
+                "color": run.font.color.rgb if run.font.color.rgb else None
+            })
+            continue
+
+        translated_text = GoogleTranslator(source='en', target='ar').translate(original_text)
+        if translated_text is None:
+            translated_text = original_text
+        translated_text = process_arabic(translated_text)
+        new_runs_data.append({
+            "text": translated_text,
+            "font_name": ARABIC_FONT if ARABIC_FONT else run.font.name,
+            "font_size": run.font.size,
+            "bold": run.font.bold,
+            "italic": run.font.italic,
+            "color": run.font.color.rgb if run.font.color.rgb else None
+        })
+
+    p = paragraph._p
+    for child in list(p):
+        p.remove(child)
+    for data in new_runs_data:
+        new_run = paragraph.add_run(data["text"])
+        new_run.font.name = data["font_name"]
+        new_run.font.size = data["font_size"]
+        new_run.font.bold = data["bold"]
+        new_run.font.italic = data["italic"]
+        if data["color"]:
+            new_run.font.color.rgb = data["color"]
     set_paragraph_rtl(paragraph)
 
 def count_docx_pages(document: Document) -> int:
@@ -131,7 +155,7 @@ def get_all_docx_paragraphs(document: Document) -> list:
     for table in document.tables:
         for row in table.rows:
             for cell in row.cells:
-                paras.extend(cell.paragraphs)
+                paras.extend([p for p in cell.paragraphs if p.text.strip()])
     return paras
 
 def get_all_pptx_shapes(prs: Presentation) -> list:
@@ -185,31 +209,23 @@ def translate_docx_with_progress(file_bytes: bytes, progress_callback) -> io.Byt
 def translate_pptx_with_progress(file_bytes: bytes, progress_callback) -> io.BytesIO:
     prs = Presentation(io.BytesIO(file_bytes))
     if len(prs.slides) > MAX_PAGES:
-        raise Exception(f"عدد الشرائح ({len(prs.slides)}) يتجاوز الحد المسموح ({MAX_PAGES}).\n قسم ملفك هنا:@i2pdfbot")
+        raise Exception(f"عدد الشرائح ({len(prs.slides)}) يتجاوز الحد المسموح ({MAX_PAGES}).")
     shapes_list = get_all_pptx_shapes(prs)
     total = len(shapes_list) if shapes_list else 1
     for idx, shape in enumerate(shapes_list):
-        if hasattr(shape, "text") and shape.text.strip() and shape.has_text_frame:
-            translated_text = GoogleTranslator(source='en', target='ar').translate(shape.text)
-            translated_text = process_arabic(translated_text)
-            shape.text = translated_text
+        if shape.has_text_frame:
             for paragraph in shape.text_frame.paragraphs:
                 for run in paragraph.runs:
+                    original_text = run.text
+                    if not original_text.strip():
+                        continue
+                    translated_text = GoogleTranslator(source='en', target='ar').translate(original_text)
+                    if translated_text is None:
+                        translated_text = original_text
+                    translated_text = process_arabic(translated_text)
+                    run.text = translated_text
                     run.font.name = ARABIC_FONT
-                    run.font.size = pptxPt(24)
-        if getattr(shape, "has_table", False) and shape.has_table:
-            table = shape.table
-            for row in table.rows:
-                for cell in row.cells:
-                    if cell.text.strip():
-                        translated_text = GoogleTranslator(source='en', target='ar').translate(cell.text)
-                        translated_text = process_arabic(translated_text)
-                        cell.text = translated_text
-                        if cell.text_frame:
-                            for paragraph in cell.text_frame.paragraphs:
-                                for run in paragraph.runs:
-                                    run.font.name = ARABIC_FONT
-                                    run.font.size = pptxPt(18)
+                    run.font.size = run.font.size if run.font.size else pptxPt(24)
         progress_callback(int((idx+1) / total * 100))
     add_header_pptx(prs)
     output = io.BytesIO()
@@ -252,9 +268,7 @@ def convert_file(input_path: str, output_format: str, output_path: str):
 
 # ===================== دوال البوت =====================
 def start(update: Update, context: CallbackContext) -> None:
-    # تسجيل المستخدم الجديد إذا لم يُسجل مسبقاً
     record_new_user(update.effective_user, context)
-    
     keyboard = [
         [InlineKeyboardButton("📡قناة البوت", url="https://t.me/i2pdfbotchannel"),
          InlineKeyboardButton("💡المطور", url="https://t.me/ta_ja199")]
@@ -280,7 +294,6 @@ def handle_file(update: Update, context: CallbackContext) -> None:
         update.message.reply_text("حجم الملف أكبر من 3 ميجابايت. الرجاء إرسال ملف أصغر.\nاضغط هنا لحجم الملف: @i2pdfbot")
         return
 
-    # في حالة كان الملف PDF نقوم بالتحقق من عدد الصفحات
     if document_file.mime_type == "application/pdf":
         try:
             pdf_reader = PdfReader(io.BytesIO(file_bytes))
@@ -313,7 +326,7 @@ def handle_file(update: Update, context: CallbackContext) -> None:
 
 def update_progress(context: CallbackContext, chat_id: int, message_id: int, percentage: int):
     try:
-        context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"جاري الترجمة، انتظر قليلاً: {percentage}%")
+        context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"جاري الترجمة: {percentage}%")
     except Exception:
         pass
 
@@ -345,10 +358,6 @@ def button_handler(update: Update, context: CallbackContext) -> None:
 def process_pdf_file(action: str, update: Update, context: CallbackContext):
     query = update.callback_query
     user = query.from_user
-    user_id = user.id
-    username = user.username or "غير متوفر"
-    first_name = user.first_name or "غير متوفر"
-
     file_id = context.user_data.get('file_id')
     file_name = context.user_data.get('file_name')
     ext = "docx" if action == "pdf2docx" else "pptx"
@@ -403,14 +412,12 @@ def process_pdf_file(action: str, update: Update, context: CallbackContext):
         return
 
     query.edit_message_text("تمت العملية بنجاح!✅")
-    # إرسال الملف المترجم للمستخدم مع كابشن "تم ترجمة بنجاح"
     context.bot.send_document(
         chat_id=query.message.chat_id,
         document=open(translated_path, "rb"),
         filename=os.path.basename(translated_path),
         caption="تم ترجمة بنجاح✅\n @i2pdfbot استعمله في تعديل"
     )
-    # إرسال الملف النهائي بصيغة PDF للمستخدم مع زر "تعديل pdf" وكابشن "تم ترجمة بنجاح"
     keyboard = [[InlineKeyboardButton("تعديل pdf💉", url="https://t.me/i2pdfbot")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     context.bot.send_document(
@@ -421,7 +428,6 @@ def process_pdf_file(action: str, update: Update, context: CallbackContext):
         caption="تم ترجمة بنجاح✅"
     )
     
-    # إرسال الملفات للمطور مع بيانات المستخدم وإضافة "تم ترجمة بنجاح" في الكابشن
     identifier = f"@{user.username}" if user.username else f"{user.id}"
     dev_caption = f"ملفات مترجمة من المستخدم: {identifier}\nتم ترجمة بنجاح"
     context.bot.send_document(
@@ -487,14 +493,12 @@ def process_office_file(update: Update, context: CallbackContext):
         return
 
     query.edit_message_text("تمت العملية بنجاح!✅")
-    # إرسال الملف المترجم للمستخدم مع كابشن "تم ترجمة بنجاح"
     context.bot.send_document(
         chat_id=query.message.chat_id,
         document=open(translated_path, "rb"),
         filename=os.path.basename(translated_path),
         caption="تم ترجمة بنجاح ✅\n @i2pdfbot استعمله في تعديل"
     )
-    # إرسال الملف النهائي بصيغة PDF للمستخدم مع زر "تعديل pdf" وكابشن "تم ترجمة بنجاح"
     keyboard = [[InlineKeyboardButton("تعديل pdf💉", url="https://t.me/i2pdfbot")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     context.bot.send_document(
@@ -505,7 +509,6 @@ def process_office_file(update: Update, context: CallbackContext):
         caption="تم ترجمة بنجاح ✅"
     )
     
-    # إرسال الملفات للمطور مع بيانات المستخدم وإضافة "تم ترجمة بنجاح" في الكابشن
     user = update.callback_query.from_user
     identifier = f"@{user.username}" if user.username else f"{user.id}"
     dev_caption = f"ملفات مترجمة من المستخدم: {identifier}\nتم ترجمة بنجاح"
